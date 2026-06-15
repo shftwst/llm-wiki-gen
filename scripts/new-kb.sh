@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# new-kb.sh — scaffold a new LLM-maintained knowledge base from the template.
+#
+# Usage:
+#   ./scripts/new-kb.sh <kb-name> [<KB Title>] [<target-parent-dir>]
+#
+#   <kb-name>            kebab-case directory name for the KB (required)
+#   <KB Title>          human-readable title (default: derived from kb-name)
+#   <target-parent-dir> where to create the KB (default: the kit's parent dir)
+#
+# Creates <target-parent-dir>/<kb-name> from _template/, substitutes placeholders,
+# and runs `git init` + an initial commit. Refuses to write into a non-empty dir.
+
+set -euo pipefail
+
+die() { printf 'error: %s\n' "$1" >&2; exit 1; }
+
+# --- resolve paths -----------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+TEMPLATE_DIR="$KIT_DIR/_template"
+[ -d "$TEMPLATE_DIR" ] || die "template not found at $TEMPLATE_DIR"
+
+# --- args --------------------------------------------------------------------
+KB_NAME="${1:-}"
+[ -n "$KB_NAME" ] || die "usage: new-kb.sh <kb-name> [<KB Title>] [<target-parent-dir>]"
+
+printf '%s' "$KB_NAME" | grep -Eq '^[a-z0-9][a-z0-9-]*$' \
+  || die "kb-name must be kebab-case (lowercase letters, digits, hyphens): got '$KB_NAME'"
+
+# default title: kebab-name -> Title Case
+default_title="$(printf '%s' "$KB_NAME" | tr '-' ' ' \
+  | awk '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) substr($i,2)}}1')"
+KB_TITLE="${2:-$default_title}"
+
+PARENT_DIR="${3:-$(cd "$KIT_DIR/.." && pwd)}"
+[ -d "$PARENT_DIR" ] || die "target parent dir does not exist: $PARENT_DIR"
+
+TARGET="$PARENT_DIR/$KB_NAME"
+
+# refuse to clobber a non-empty existing dir
+if [ -e "$TARGET" ]; then
+  [ -d "$TARGET" ] || die "target exists and is not a directory: $TARGET"
+  [ -z "$(ls -A "$TARGET" 2>/dev/null)" ] || die "target dir is not empty: $TARGET"
+else
+  mkdir -p "$TARGET"
+fi
+
+DATE="$(date +%F)"
+YEAR="$(date +%Y)"
+
+# --- copy template -----------------------------------------------------------
+cp -R "$TEMPLATE_DIR"/. "$TARGET"/
+
+# --- substitute placeholders (values passed via env so special chars are safe) -
+find "$TARGET" -type f ! -path '*/.git/*' -print0 | while IFS= read -r -d '' f; do
+  KB_NAME="$KB_NAME" KB_TITLE="$KB_TITLE" DATE="$DATE" YEAR="$YEAR" \
+  perl -pi -e '
+    s/\{\{KB_NAME\}\}/$ENV{KB_NAME}/g;
+    s/\{\{KB_TITLE\}\}/$ENV{KB_TITLE}/g;
+    s/\{\{DATE\}\}/$ENV{DATE}/g;
+    s/\{\{YEAR\}\}/$ENV{YEAR}/g;
+  ' "$f"
+done
+
+# --- git init ----------------------------------------------------------------
+if command -v git >/dev/null 2>&1; then
+  git -C "$TARGET" init -q
+  git -C "$TARGET" add -A
+  if ! git -C "$TARGET" commit -q -m "Scaffold $KB_TITLE knowledge base from llm-wiki-kit"; then
+    echo "note: nothing committed — configure git user.name/email, then commit manually."
+  fi
+else
+  echo "note: git not found — skipped 'git init'."
+fi
+
+# --- done --------------------------------------------------------------------
+cat <<EOF
+
+✓ Created knowledge base: $TARGET
+
+Next steps:
+  cd "$TARGET"
+  # open in Claude Code (CLAUDE.md loads automatically)
+  # open wiki/ as an Obsidian vault
+  # add sources to raw/ (files, folders, or: ln -s <living-source> raw/<name>)
+  # then ask the agent to ingest them
+EOF

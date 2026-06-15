@@ -1,0 +1,8 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*~
+
+# Obsidian per-machine state (vault lives in wiki/)
+.obsidian/
+.trash/

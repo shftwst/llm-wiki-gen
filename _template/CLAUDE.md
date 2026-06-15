@@ -52,6 +52,12 @@ A "source" is one unit of source material. It can be:
 **Sources are not frozen.** Living sources (especially symlinks) change over time.
 Support re-ingesting updates — see the **Re-ingest** workflow.
 
+> **Hard rule — `raw/` is read-only to you.** Sources are never mutable by you. You read
+> them; you never create, edit, move, rename, or delete anything in `raw/` — including
+> writing *through* a symlink to a living source. The human owns `raw/` entirely. When a
+> source needs to change, that happens at its origin; your job is to re-ingest the change,
+> never to make it.
+
 Obsidian cannot render non-markdown sources (`.docx`, `.xlsx`, PDFs, etc.), but you can
 read or convert them. Their knowledge reaches the reader through wiki pages, not the raw
 files.
@@ -183,7 +189,9 @@ go-ahead. Append a `lint` entry.
 
 ## Principles
 
-- You own `wiki/`; the human owns `raw/` and the questions.
+- You own `wiki/`; the human owns `raw/` and the questions. **`raw/` is strictly
+  read-only to you — never create, edit, or delete anything there, including through
+  symlinks.**
 - Structure emerges from content — don't impose a taxonomy up front.
 - Keep pages small and single-purpose; split when one grows too broad.
 - Bookkeeping is your job: cross-references, freshness, consistency. Do it thoroughly.

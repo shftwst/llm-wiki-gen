@@ -87,6 +87,20 @@ files.
   ---
   ```
 
+- **Derived pages** (comparisons, analyses — answers synthesized from *other* pages)
+  carry dependency frontmatter so their staleness can be detected mechanically:
+
+  ```yaml
+  ---
+  type: comparison
+  tags: []
+  created: YYYY-MM-DD
+  updated: YYYY-MM-DD
+  derived_from: ["[[page-a]]", "[[page-b]]"]   # the wiki pages this was synthesized from
+  as_of: YYYY-MM-DD                            # snapshot date of the underlying data
+  ---
+  ```
+
 ### Page types
 
 - **source** — a summary of one ingested source. Lives in `wiki/sources/`. Records
@@ -96,7 +110,8 @@ files.
 - **concept** — an idea, policy, or topic that spans sources (a pricing model, a
   methodology). Lives in `wiki/concepts/`.
 - **comparison / analysis** — durable answers worth keeping; file query results back
-  here. Lives in `wiki/analysis/`.
+  here. Lives in `wiki/analysis/`. Carries `derived_from` + `as_of` frontmatter so
+  staleness is mechanically detectable (see Lint).
 - **overview** — `wiki/overview.md`, the evolving synthesis. **index** — `wiki/index.md`.
 
 Create subdirectories under `wiki/` (`sources/`, `entities/`, `concepts/`, `analysis/`)
@@ -134,26 +149,36 @@ it grep-parseable: `grep "^## \[" log.md | tail -5`.
 ### Re-ingest (a source changed)
 
 1. Re-read the source. Compare against its existing source page.
-2. Update only the affected wiki pages. Where new data contradicts old claims, flag it
-   and revise — note explicitly what was superseded.
-3. Bump `last_ingested` and `fingerprint` on the source page; bump `updated` on every
-   page you touch.
-4. Append a `reingest` entry to `log.md` noting what changed.
+2. Update the affected entity/concept pages. Where new data contradicts old claims, flag
+   it and revise — note explicitly what was superseded.
+3. **Propagate to derived pages.** For every page you changed, follow its backlinks — the
+   pages that `[[link]]` to it, especially any whose `derived_from` lists it. Recompute
+   each affected derived page; if you can't fully recompute it now, flag it inline and
+   leave its `as_of` unchanged so Lint keeps surfacing it. Never leave a derived page
+   silently inconsistent with its sources.
+4. Bump `last_ingested` and `fingerprint` on the source page; bump `updated` on every
+   page you touch, and `as_of` on any derived page you recompute.
+5. Append a `reingest` entry to `log.md` noting what changed and which derived pages it
+   rippled into.
 
 ### Query
 
 1. Read `wiki/index.md`, then drill into the relevant pages.
 2. Answer with citations to wiki pages (and through them, to raw sources).
 3. If the answer is durable (a comparison, an analysis, a discovered connection), offer
-   to file it back as a page in `wiki/analysis/` so the exploration compounds.
+   to file it back as a page in `wiki/analysis/` so the exploration compounds. Record its
+   `derived_from` (the pages it draws on) and `as_of` (the snapshot date) so its freshness
+   can be tracked.
 
 ### Lint (health check)
 
-Scan for: contradictions between pages; stale claims newer sources superseded; orphan
-pages (no inbound links); concepts mentioned but lacking a page; missing cross-references;
-**living sources (`source_kind: symlink-living`) whose target changed since
-`last_ingested`, or that are overdue — surface as re-ingest candidates**; data gaps a web
-search could fill. Report findings and suggested next questions; fix with the human's
+Scan for: contradictions between pages; stale claims newer sources superseded;
+**stale derived pages — for any page with `derived_from`, if any listed page's `updated`
+is later than this page's `as_of`, flag it stale (a pure date comparison, no re-reading
+needed)**; orphan pages (no inbound links); concepts mentioned but lacking a page; missing
+cross-references; **living sources (`source_kind: symlink-living`) whose target changed
+since `last_ingested`, or that are overdue — surface as re-ingest candidates**; data gaps
+a web search could fill. Report findings and suggested next questions; fix with the human's
 go-ahead. Append a `lint` entry.
 
 ## Principles

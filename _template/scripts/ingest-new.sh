@@ -7,11 +7,19 @@
 #   ./scripts/ingest-new.sh --auto     unattended permissions (for cron / launchd)
 #
 # Flags combine (e.g. --watch --auto). Set CLAUDE_BIN=/path/to/claude if not on PATH.
+#
+# Cost: when `jq` is available, each run's cost is appended to .ingest/cost.tsv
+# (date, cost_usd, turns, duration_ms, sources, mode) and a cumulative total is printed.
+#
+# Model: defaults to claude-opus-4-8; override with CLAUDE_MODEL=<id> (e.g. claude-sonnet-4-6).
 
 set -euo pipefail
 
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCAN="$KB_DIR/scripts/scan.sh"
+PENDING="$KB_DIR/.ingest/pending.md"
+COST_TSV="$KB_DIR/.ingest/cost.tsv"
+COST_HEADER=$'# cost.tsv — per-run ingest cost ledger (appended by scripts/ingest-new.sh).\n# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode'
 
 DRY_RUN=0; AUTO=0; WATCH=0
 for a in "${@:-}"; do
@@ -25,17 +33,16 @@ for a in "${@:-}"; do
 done
 
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
+MODEL="${CLAUDE_MODEL:-claude-opus-4-8}"   # ingest model; override: CLAUDE_MODEL=claude-sonnet-4-6
 if [ "$AUTO" -eq 1 ]; then
   PERM=(--permission-mode bypassPermissions)   # unattended: no prompts
 else
   PERM=(--permission-mode acceptEdits)         # supervised: auto-accept edits
 fi
 
-# --watch streams the run as JSON events; render them readable with jq if present.
-OUT=()
-if [ "$WATCH" -eq 1 ]; then
-  OUT=(--output-format stream-json --verbose)
-fi
+HAVE_JQ=0; command -v jq >/dev/null 2>&1 && HAVE_JQ=1
+
+# readable render of the JSON event stream (used for --watch)
 JQ_FILTER='
 def short(s): (s // "" | tostring | if length>80 then .[0:80]+"…" else . end);
 if .type=="system" and .subtype=="init" then "▶ start (model \(.model // "?"))"
@@ -47,11 +54,6 @@ elif .type=="assistant" then
 elif .type=="result" then "✓ \(.subtype // "done")\(if .total_cost_usd then "  ($\(.total_cost_usd))" else "" end)"
 else empty end
 '
-_render() {
-  if [ "$WATCH" -eq 1 ] && command -v jq >/dev/null 2>&1; then jq -r "$JQ_FILTER"
-  else cat
-  fi
-}
 
 PROMPT='Mechanical ingest run. Read .ingest/pending.md and follow this KB'"'"'s CLAUDE.md.
 For every source under New and Changed, run the Ingest or Re-ingest workflow; for Removed,
@@ -70,9 +72,11 @@ esac
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "ingest-new: [dry-run] changes pending. Would run, in $KB_DIR:"
-  echo "  $CLAUDE_BIN -p ${PERM[*]} ${OUT[*]:-} \"<unattended ingest prompt>\""
-  if [ "$WATCH" -eq 1 ] && ! command -v jq >/dev/null 2>&1; then
-    echo "  (jq not found — --watch would print raw stream-json)"
+  if [ "$HAVE_JQ" -eq 1 ]; then
+    echo "  $CLAUDE_BIN -p ${PERM[*]} --model $MODEL --output-format stream-json --verbose \"<ingest prompt>\""
+    echo "  → ${WATCH:+live steps, }final summary, and append cost to .ingest/cost.tsv"
+  else
+    echo "  $CLAUDE_BIN -p ${PERM[*]} --model $MODEL \"<ingest prompt>\"   (jq absent: plain text, no cost ledger)"
   fi
   echo "  then: scripts/scan.sh --accept && git add -A && git commit"
   echo "ingest-new: [dry-run] no changes made."
@@ -81,22 +85,49 @@ fi
 
 command -v "$CLAUDE_BIN" >/dev/null 2>&1 \
   || { echo "ingest-new: '$CLAUDE_BIN' not found. Set CLAUDE_BIN=/path/to/claude." >&2; exit 127; }
-if [ "$WATCH" -eq 1 ] && ! command -v jq >/dev/null 2>&1; then
-  echo "ingest-new: jq not found — --watch will print raw stream-json (install jq for readable output)." >&2
+if [ "$HAVE_JQ" -eq 0 ]; then
+  echo "ingest-new: jq not found — no live steps or cost ledger (install jq to enable)." >&2
 fi
 
-echo "ingest-new: ingesting pending sources via $CLAUDE_BIN ..."
-if [ "$WATCH" -eq 1 ]; then
-  (
-    cd "$KB_DIR"
-    set +e
-    "$CLAUDE_BIN" -p "${PERM[@]}" "${OUT[@]}" "$PROMPT" | _render
+SOURCES_N="$(grep -cE '^- ' "$PENDING" 2>/dev/null || true)"
+echo "ingest-new: ingesting $SOURCES_N pending source(s) via $CLAUDE_BIN ..."
+
+rc=0
+if [ "$HAVE_JQ" -eq 1 ]; then
+  STREAM_TMP="$(mktemp)"; trap 'rm -f "$STREAM_TMP"' EXIT
+  set +e
+  if [ "$WATCH" -eq 1 ]; then
+    ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" --model "$MODEL" --output-format stream-json --verbose "$PROMPT" ) \
+      | tee "$STREAM_TMP" | jq -r "$JQ_FILTER"
     rc="${PIPESTATUS[0]}"
-    set -e
-    exit "$rc"
-  )
+  else
+    ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" --model "$MODEL" --output-format stream-json --verbose "$PROMPT" ) > "$STREAM_TMP"
+    rc=$?
+    jq -r 'select(.type=="result") | .result // empty' "$STREAM_TMP" 2>/dev/null || true
+  fi
+  set -e
+
+  # --- record cost (the run incurs cost whether or not it fully succeeded) ----
+  COST="$(jq -r 'select(.type=="result") | .total_cost_usd // empty' "$STREAM_TMP" 2>/dev/null | tail -1 || true)"
+  TURNS="$(jq -r 'select(.type=="result") | .num_turns // empty'      "$STREAM_TMP" 2>/dev/null | tail -1 || true)"
+  DUR="$(jq -r 'select(.type=="result") | .duration_ms // empty'      "$STREAM_TMP" 2>/dev/null | tail -1 || true)"
+  if [ -n "$COST" ]; then
+    [ -f "$COST_TSV" ] || printf '%s\n' "$COST_HEADER" > "$COST_TSV"
+    mode="supervised"; [ "$AUTO" -eq 1 ] && mode="auto"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F)" "$COST" "${TURNS:-}" "${DUR:-}" "$SOURCES_N" "$mode" >> "$COST_TSV"
+    TOTAL="$(awk -F'\t' '$1 !~ /^#/ {s+=$2} END{printf "%.4f", s+0}' "$COST_TSV")"
+    printf 'ingest-new: cost $%s (%s turns, %s source(s)) — cumulative $%s\n' "$COST" "${TURNS:-?}" "$SOURCES_N" "$TOTAL"
+  else
+    echo "ingest-new: no cost field in result — cost ledger not updated." >&2
+  fi
 else
-  ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" "$PROMPT" )
+  ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" --model "$MODEL" "$PROMPT" )
+  rc=$?
+fi
+
+if [ "$rc" -ne 0 ]; then
+  echo "ingest-new: ingest run failed (exit $rc) — manifest NOT advanced, no commit." >&2
+  exit "$rc"
 fi
 
 echo "ingest-new: advancing manifest baseline + committing ..."

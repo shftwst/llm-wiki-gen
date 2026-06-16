@@ -40,6 +40,22 @@ or you'll see raw JSON. `--auto` stays quiet and logs to `.ingest/auto.log`.
 
 If `claude` isn't on your PATH: `CLAUDE_BIN=/full/path/to/claude ./scripts/ingest-new.sh`.
 
+### Cost & model
+
+When `jq` is installed, each run appends a row to `.ingest/cost.tsv` —
+`date · cost_usd · turns · duration_ms · sources · mode` — and prints the run cost plus a
+running cumulative total. The ledger is committed, so cost history travels with the KB:
+
+```sh
+awk -F'\t' '$1!~/^#/{s+=$2} END{printf "total $%.4f\n", s}' .ingest/cost.tsv
+```
+
+The ingest model defaults to **`claude-opus-4-8`**. Override per run with `CLAUDE_MODEL`:
+
+```sh
+CLAUDE_MODEL=claude-sonnet-4-6 ./scripts/ingest-new.sh   # cheaper/faster for small batches
+```
+
 On success it advances `.ingest/manifest.tsv` and commits. The manifest only advances when
 the ingest run exits cleanly, so an interrupted run leaves the queue intact for next time.
 

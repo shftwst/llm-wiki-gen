@@ -1,0 +1,2 @@
+# cost.tsv — per-run ingest cost ledger (appended by scripts/ingest-new.sh).
+# Columns: date	cost_usd	turns	duration_ms	sources	mode

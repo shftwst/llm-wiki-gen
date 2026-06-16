@@ -72,6 +72,8 @@ per-document freshness check that drives re-reading (see Progressive deepening).
 ./scripts/ingest            # Pass 1 "read": read HIGH-value docs in full
 ./scripts/ingest --map      # Pass 0 "map": cheap skeleton + build coverage frontier
 ./scripts/ingest --deepen   # Pass 2+: read the next highest-value unread OR stale docs
+./scripts/ingest --verify   # QA: adversarial auditor re-reads sources, writes .ingest/qa.tsv
+./scripts/ingest --sample 8 # verify: audit at most N pages this run
 ./scripts/ingest --fresh    # prioritise re-reading stale (changed) docs over new coverage
 ./scripts/ingest --budget 5 # soft per-pass spend target (USD)
 ./scripts/ingest --watch    # live play-by-play of each step
@@ -93,6 +95,12 @@ Stop after any pass — the wiki is usable throughout and the next run resumes t
 `unread ∪ stale`. Default order is value-first (stale beats unread *within* a tier);
 `--fresh` reconciles all stale before expanding. It's the web-crawler coverage-vs-freshness
 trade-off, weighted by importance.
+
+**Verification (`--verify`).** A separate, adversarial QA pass: it re-reads the cited
+sources for the highest-risk pages, confirms each claim or flags it (`> [!review]`), and
+writes a row per page to `.ingest/qa.tsv` (`status · claims_checked · claims_supported ·
+confidence`). `--sample N` caps pages; `--budget $N` caps spend. `stats` reports
+`% verified`. It does not sweep, ingest, or touch the manifest — QA only.
 
 Full reference — the two ledgers, the algorithm, and a guardrailed operator playbook:
 [`../docs/deepening.md`](../docs/deepening.md).

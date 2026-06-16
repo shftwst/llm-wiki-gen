@@ -202,7 +202,7 @@ answering a query, read the index first to find relevant pages, then drill in.
 - <what changed, which pages touched>
 ```
 
-Ops vocabulary: `ingest | reingest | query | lint`. The consistent `## [` prefix keeps
+Ops vocabulary: `ingest | reingest | query | lint | qa`. The consistent `## [` prefix keeps
 it grep-parseable: `grep "^## \[" log.md | tail -5`.
 
 ## Workflows
@@ -309,6 +309,25 @@ cross-references; **source drift — run `scripts/scan`, which fingerprints ever
 last ingested; surface those as re-ingest candidates**; data gaps a web search could fill. Report findings and suggested next questions; fix with the human's
 go-ahead. Append a `lint` entry.
 
+### Verify (QA audit)
+
+`scripts/ingest --verify` runs you as an **independent, adversarial auditor** — a different
+role from the writer. Sample the highest-risk pages (personal/business-sensitive; pages
+with specific numbers/dates; pages citing `not read` sources; pages already flagged), then:
+
+1. **Re-read the actual cited sources** (follow the `## Sources` `../raw/` links). Do not
+   trust the page — go to the document.
+2. For each load-bearing claim, confirm it is **directly supported** by a source you read.
+   **Default to unsupported** when you cannot confirm it — no benefit of the doubt.
+3. For any unsupported or contradicted claim, add a `> [!review]` callout naming what
+   failed and against which source.
+4. Record one row per audited page in `.ingest/qa.tsv` (`page · status · date ·
+   claims_checked · claims_supported · confidence · notes`; `status = verified` if all
+   checked claims hold, else `flagged`). Add a `verified: <date>` line to the page
+   frontmatter as a courtesy. The ledger is authoritative; `stats` reports `% verified`.
+5. Append a `qa` entry to `log.md`. The goal is **calibrated confidence per tier**, not
+   100% — sample first where value × uncertainty × stakes is highest.
+
 ## Mechanical detection & ingest
 
 Detection of new/changed sources is automated so it never depends on someone remembering
@@ -321,6 +340,8 @@ to ask. The machinery lives in `scripts/` and `.ingest/`:
 - **`.ingest/manifest.tsv`** — the authoritative detection baseline: one row per ingested
   source (`source_path · kind · fingerprint · last_ingested`). **Never edit it by hand,
   and neither do you** — `scripts/ingest` advances it after a successful ingest.
+- **`.ingest/qa.tsv`** — the verification ledger (you own it): one row per audited page,
+  written by `ingest --verify`. `stats` reads it for `% verified`. See the *Verify* workflow.
 - **`.ingest/pending.md`** — the regenerated queue of what scan found. Derived; safe to
   overwrite.
 - **`.ingest/coverage.tsv`** — the read frontier: each document row has a `path`, value

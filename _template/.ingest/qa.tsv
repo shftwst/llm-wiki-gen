@@ -1,0 +1,10 @@
+# qa.tsv — verification ledger (AGENT-owned, written by `ingest --verify`). TAB-separated.
+# One row per audited wiki page. Columns:
+#   page             wiki-relative path (e.g. entities/acme-corp.md)
+#   status           verified | flagged | unverified
+#   date             YYYY-MM-DD of the audit
+#   claims_checked   number of load-bearing claims checked against re-read sources
+#   claims_supported number confirmed
+#   confidence       supported / checked  (0..1)
+#   notes            free text (no tabs)
+# stats reads this for "% verified". Pages absent from this file are unverified.

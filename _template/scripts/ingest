@@ -5,6 +5,8 @@
 #   ./scripts/ingest             Pass 1 "read": sweep, scan, read HIGH-value docs
 #   ./scripts/ingest --map       Pass 0 "map": cheap skeleton + build coverage frontier
 #   ./scripts/ingest --deepen    Pass 2+: read the next highest-value unread/stale docs
+#   ./scripts/ingest --verify    QA: adversarial auditor re-reads sources, writes .ingest/qa.tsv
+#   ./scripts/ingest --sample N  verify: audit at most N pages this run
 #   ./scripts/ingest --fresh     prioritise re-reading STALE (changed) docs over new coverage
 #   ./scripts/ingest --budget N  soft per-pass spend target in USD (e.g. --budget 5)
 #   ./scripts/ingest --watch     live play-by-play of each step
@@ -27,10 +29,13 @@ SCAN="$KB_DIR/scripts/scan"
 SWEEP="$KB_DIR/scripts/sweep"
 PENDING="$KB_DIR/.ingest/pending.md"
 COVERAGE="$KB_DIR/.ingest/coverage.tsv"
+QA="$KB_DIR/.ingest/qa.tsv"
+WIKI="$KB_DIR/wiki"
 COST_TSV="$KB_DIR/.ingest/cost.tsv"
 COST_HEADER=$'# cost.tsv — per-run ingest cost ledger (appended by scripts/ingest).\n# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode\tmodel'
 
-DRY_RUN=0; AUTO=0; WATCH=0; SWEEP_ENABLED=1; MODE=read; BUDGET=""; FRESH=0
+DRY_RUN=0; AUTO=0; WATCH=0; SWEEP_ENABLED=1; MODE=read; BUDGET=""; FRESH=0; SAMPLE=""
+modeset() { case "$MODE" in read) MODE="$1";; "$1") ;; *) echo "ingest: --$1 conflicts with --$MODE" >&2; exit 1;; esac; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)  DRY_RUN=1;;
@@ -38,10 +43,13 @@ while [ $# -gt 0 ]; do
     --watch)    WATCH=1;;
     --fresh)    FRESH=1;;
     --no-sweep) SWEEP_ENABLED=0;;
-    --map)      [ "$MODE" = "deepen" ] && { echo "ingest: --map and --deepen are mutually exclusive" >&2; exit 1; }; MODE=map;;
-    --deepen)   [ "$MODE" = "map" ]    && { echo "ingest: --map and --deepen are mutually exclusive" >&2; exit 1; }; MODE=deepen;;
+    --map)      modeset map;;
+    --deepen)   modeset deepen;;
+    --verify)   modeset verify;;
     --budget)   shift; BUDGET="${1:-}";;
     --budget=*) BUDGET="${1#--budget=}";;
+    --sample)   shift; SAMPLE="${1:-}";;
+    --sample=*) SAMPLE="${1#--sample=}";;
     "") ;;
     *) echo "ingest: unknown arg: $1" >&2; exit 1;;
   esac
@@ -69,6 +77,8 @@ _render() { if [ "$WATCH" -eq 1 ] && command -v jq >/dev/null 2>&1; then jq -r "
 
 BUDGET_CLAUSE=""
 [ -n "$BUDGET" ] && BUDGET_CLAUSE=" Spend roughly \$$BUDGET this pass, then stop; the next run resumes the frontier."
+SAMPLE_CLAUSE=""
+[ -n "$SAMPLE" ] && SAMPLE_CLAUSE=" Audit at most $SAMPLE pages this run."
 
 # Priority policy over the frontier (unread plus stale). Like a web crawler balancing
 # coverage vs freshness, weighted by importance: value tier dominates, freshness breaks ties.
@@ -92,19 +102,29 @@ case "$MODE" in
   deepen)
     PROMPT="Mechanical ingest — DEEPEN pass (anytime iterative deepening). Read notes.md, this KB's CLAUDE.md, and .ingest/coverage.tsv, then read the next documents IN FULL and upgrade the affected pages and analysis/ pages. $POLICY $COV_CLAUSE Cite sources on every page.$BUDGET_CLAUSE $COMMON_TAIL"
     ;;
+  verify)
+    PROMPT="Mechanical QA — VERIFY pass. You are an INDEPENDENT, SKEPTICAL auditor, NOT the author of these pages; your job is to find unsupported claims, not to defend the wiki. Read this KB's CLAUDE.md for conventions. Pick the highest-RISK pages to audit first: personal-sensitive or business-sensitive pages, pages stating specific facts (numbers, dates, legal/financial), pages citing documents marked 'not read', and pages already carrying a [!review].$SAMPLE_CLAUSE$BUDGET_CLAUSE
+For each page you audit: re-read the ACTUAL source documents it cites in its ## Sources (follow the ../raw/ links to the real files); for each load-bearing claim, confirm it is directly supported by a source you read, and DEFAULT TO 'unsupported' if you cannot confirm it — do not give the benefit of the doubt; for any unsupported or contradicted claim add a '> [!review]' callout on the page naming exactly what failed and against which source.
+Record one row per audited page in .ingest/qa.tsv (TAB columns: page<TAB>status<TAB>date<TAB>claims_checked<TAB>claims_supported<TAB>confidence<TAB>notes; status=verified if all checked claims hold else flagged; confidence=supported/checked) — you OWN qa.tsv — and add a 'verified: <date>' line to each audited page's frontmatter.
+Then append a 'qa' entry to log.md: pages audited, claims checked vs supported, and every page flagged. Do NOT edit raw/, .ingest/manifest.tsv, or .ingest/coverage.tsv; do NOT git commit — the wrapper commits. Never record secrets or personal identifiers (SIN, credentials, etc.; see STYLE.md)."
+    ;;
 esac
 
-# --- sweep inbox → raw -------------------------------------------------------
-if [ "$SWEEP_ENABLED" -eq 1 ] && [ -x "$SWEEP" ]; then
+# --- sweep inbox → raw (not for the verify QA pass) --------------------------
+if [ "$SWEEP_ENABLED" -eq 1 ] && [ "$MODE" != "verify" ] && [ -x "$SWEEP" ]; then
   if [ "$DRY_RUN" -eq 1 ]; then bash "$SWEEP" --dry-run || true
   else bash "$SWEEP" || echo "ingest: sweep failed — continuing with existing raw/." >&2; fi
 fi
 
-# --- freshness: flag stale coverage items up front (no-op if no coverage / raw unresolvable) ---
-[ "$DRY_RUN" -eq 0 ] && bash "$SCAN" --refresh >/dev/null 2>&1 || true
+# --- freshness: flag stale coverage items up front (skip for verify; no-op if unresolvable) ---
+if [ "$DRY_RUN" -eq 0 ] && [ "$MODE" != "verify" ]; then bash "$SCAN" --refresh >/dev/null 2>&1 || true; fi
 
-# --- gate: deepen is driven by the coverage frontier (unread ∪ stale); map/read by scan ----
-if [ "$MODE" = "deepen" ]; then
+# --- gate: verify needs wiki pages; deepen drives off coverage; map/read off scan ----
+if [ "$MODE" = "verify" ]; then
+  if [ ! -d "$WIKI" ] || ! find "$WIKI" -name '*.md' 2>/dev/null | grep -q .; then
+    echo "ingest: no wiki pages to verify yet — run an ingest first."; exit 0
+  fi
+elif [ "$MODE" = "deepen" ]; then
   if [ ! -f "$COVERAGE" ] || ! awk -F'\t' '$1 !~ /^#/ && ($3 == "unread" || $3 == "stale") {f=1} END{exit f?0:1}' "$COVERAGE" 2>/dev/null; then
     echo "ingest: nothing left to deepen — no 'unread' or 'stale' items in coverage.tsv. Run --map (or a read pass) first if coverage is empty."
     exit 0
@@ -119,7 +139,7 @@ else
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "ingest: [dry-run] mode=$MODE$FRESHLBL${BUDGET:+ budget=\$$BUDGET}. Would run, in $KB_DIR:"
+  echo "ingest: [dry-run] mode=$MODE$FRESHLBL${SAMPLE:+ sample=$SAMPLE}${BUDGET:+ budget=\$$BUDGET}. Would run, in $KB_DIR:"
   if [ "$HAVE_JQ" -eq 1 ]; then
     echo "  $CLAUDE_BIN -p ${PERM[*]} --model $MODEL --output-format stream-json --verbose \"<$MODE prompt>\""
     echo "  → ${WATCH:+live steps, }final summary, and append cost to .ingest/cost.tsv"
@@ -136,7 +156,7 @@ command -v "$CLAUDE_BIN" >/dev/null 2>&1 \
 [ "$HAVE_JQ" -eq 0 ] && echo "ingest: jq not found — no live steps or cost ledger (install jq to enable)." >&2
 
 SOURCES_N="$(grep -cE '^- ' "$PENDING" 2>/dev/null || true)"
-echo "ingest: $MODE pass$FRESHLBL${BUDGET:+ (budget \$$BUDGET)} via $CLAUDE_BIN ..."
+echo "ingest: $MODE pass$FRESHLBL${SAMPLE:+ (sample $SAMPLE)}${BUDGET:+ (budget \$$BUDGET)} via $CLAUDE_BIN ..."
 
 rc=0
 if [ "$HAVE_JQ" -eq 1 ]; then
@@ -177,16 +197,21 @@ if [ "$rc" -ne 0 ]; then
 fi
 
 # Guard against silent no-ops (incl. a cancelled run — Claude Code exits 0 on cancel).
-CHANGED="$(git -C "$KB_DIR" status --porcelain -- wiki log.md .ingest/coverage.tsv 2>/dev/null || true)"
+CHANGED="$(git -C "$KB_DIR" status --porcelain -- wiki log.md .ingest/coverage.tsv .ingest/qa.tsv 2>/dev/null || true)"
 if [ -z "$CHANGED" ]; then
-  echo "ingest: the run produced NO changes to wiki/, log.md, or coverage.tsv — nothing ingested." >&2
+  echo "ingest: the run produced NO changes to wiki/, log.md, coverage.tsv, or qa.tsv — nothing done." >&2
   echo "ingest: baseline NOT advanced. (Run cancelled, or raw/ content unreadable?)" >&2
   exit 3
 fi
 
-echo "ingest: advancing manifest baseline + freshness + committing ..."
-"$SCAN" --accept >/dev/null
-"$SCAN" --refresh >/dev/null 2>&1 || true   # baseline freshly-read coverage items (fingerprint the version just read)
-( cd "$KB_DIR" && git add -A && git commit -q -m "Mechanical ingest — $MODE pass ($(date +%F))" ) \
-  || echo "ingest: nothing to commit."
+if [ "$MODE" = "verify" ]; then
+  echo "ingest: committing verification results ..."
+  cmsg="QA verify pass ($(date +%F))"
+else
+  echo "ingest: advancing manifest baseline + freshness + committing ..."
+  "$SCAN" --accept >/dev/null
+  "$SCAN" --refresh >/dev/null 2>&1 || true   # baseline freshly-read coverage items (fingerprint the version just read)
+  cmsg="Mechanical ingest — $MODE pass ($(date +%F))"
+fi
+( cd "$KB_DIR" && git add -A && git commit -q -m "$cmsg" ) || echo "ingest: nothing to commit."
 echo "ingest: done."

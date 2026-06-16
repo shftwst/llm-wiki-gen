@@ -7,23 +7,24 @@
 #
 # Reads .ingest/{coverage,manifest,cost}.tsv and wiki/. Read-only; writes nothing.
 
-set -euo pipefail
+set -eu   # no pipefail: `grep ... | wc` deliberately tolerates no-match
 
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COVERAGE="$KB_DIR/.ingest/coverage.tsv"
 MANIFEST="$KB_DIR/.ingest/manifest.tsv"
+QA="$KB_DIR/.ingest/qa.tsv"
 COST="$KB_DIR/.ingest/cost.tsv"
 WIKI="$KB_DIR/wiki"
 RAW="$KB_DIR/raw"
 CHECK=0; [ "${1:-}" = "--check" ] && CHECK=1
 
 rule() { printf '%s\n' "────────────────────────────────────────────────"; }
-have() { [ -f "$1" ] && [ "$(grep -vc '^#' "$1" 2>/dev/null || echo 0)" -gt 0 ]; }
+have() { [ -f "$1" ] && [ "$(grep -vc '^#' "$1" 2>/dev/null || true)" -gt 0 ]; }
 
 printf '\n══════ %s — ingestion stats ══════\n' "$(basename "$KB_DIR")"
 
 # --- sources (manifest) ------------------------------------------------------
-nsrc=0; [ -f "$MANIFEST" ] && nsrc=$(grep -vc '^#' "$MANIFEST" 2>/dev/null || echo 0)
+nsrc=0; [ -f "$MANIFEST" ] && nsrc=$(grep -vc '^#' "$MANIFEST" 2>/dev/null || true)
 printf '\nSOURCES        %s tracked in raw/ (manifest)\n' "$nsrc"
 
 # --- documents (coverage frontier) -------------------------------------------
@@ -80,6 +81,23 @@ if [ -d "$WIKI" ]; then
   printf '  open [!review]   %s flag(s) across %s page(s)\n' "$revn" "$rev"
 else
   printf '  (none yet)\n'
+fi
+
+# --- verification (qa.tsv) ---------------------------------------------------
+printf '\nVERIFICATION (.ingest/qa.tsv)\n'; rule
+npages=$([ -d "$WIKI" ] && find "$WIKI" -name '*.md' | wc -l | tr -d ' ' || echo 0)
+if have "$QA"; then
+  awk -F'\t' -v np="$npages" '
+    $1 ~ /^#/ || $1=="" {next}
+    {aud++; sct+=$4; sup+=$5; if($2=="verified")v++; else if($2=="flagged")fl++}
+    END{
+      printf "  audited        %d of %d pages\n", aud, np
+      printf "  verified %d  flagged %d  unverified %d\n", v+0, fl+0, np-aud
+      if(np>0) printf "  %% verified     %d%%\n", int((v+0)*100/np)
+      if(sct>0) printf "  claims         %d checked, %d supported (%d%%)\n", sct, sup, int(sup*100/sct)
+    }' "$QA"
+else
+  printf '  (none yet — run ./scripts/ingest --verify)\n'
 fi
 
 # --- cost --------------------------------------------------------------------

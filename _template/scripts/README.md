@@ -3,6 +3,13 @@
 These ship inside the KB so it stays self-contained and splittable. Detection is a pure
 script (no LLM, no cost); the actual ingest invokes Claude Code headlessly.
 
+> **Run these where `raw/` actually resolves — your real machine, not a container or
+> remote sandbox.** Sources are often symlinks to local mounts (shared drives, OneDrive,
+> etc.). Inside a container those symlinks are broken, so a scan there fingerprints
+> *emptiness* and an ingest captures nothing. Sanity check: if
+> `find -L raw/<source> -type f | wc -l` is `0` for a source you know has files, the mount
+> isn't present — you're in the wrong place.
+
 ## `scan.sh` — detect changes
 
 Walks `raw/`, fingerprints each source (following symlinks into living drives), and diffs

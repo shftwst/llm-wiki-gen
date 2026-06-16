@@ -5,18 +5,18 @@ sources and writes the wiki; you curate sources and ask questions.
 
 ## Layout
 
-- `raw/` — your sources (files, directories, or symlinks to living documents). You add
+- `raw/`, your sources (files, directories, or symlinks to living documents). You add
   these.
-- `wiki/` — the wiki the LLM writes and maintains. **Open this folder as your Obsidian
+- `wiki/`, the wiki the LLM writes and maintains. **Open this folder as your Obsidian
   vault.**
-- `CLAUDE.md` — the schema the LLM follows. Co-evolve it as you learn what works.
-- `log.md` — chronological record of every ingest / re-ingest / query / lint.
+- `CLAUDE.md`, the schema the LLM follows. Co-evolve it as you learn what works.
+- `log.md`, chronological record of every ingest / re-ingest / query / lint.
 
 ## Using it
 
 1. Open this folder in Claude Code (the `CLAUDE.md` loads automatically).
 2. Open `wiki/` as an Obsidian vault to browse the result.
-3. Add a source — drop a file or folder into `raw/`, or symlink a living document:
+3. Add a source, drop a file or folder into `raw/`, or symlink a living document:
    ```sh
    ln -s /path/to/shared-drive/Ops raw/ops-shared-drive
    ```
@@ -26,7 +26,7 @@ sources and writes the wiki; you curate sources and ask questions.
 
 ## Notes
 
-- Symlinked living sources stay at their origin — git stores the link, never the
+- Symlinked living sources stay at their origin, git stores the link, never the
   target's contents.
 - Obsidian only renders markdown; non-markdown sources are read by the LLM and surface
   through wiki pages.

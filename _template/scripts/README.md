@@ -1,19 +1,19 @@
-# scripts/ — mechanical ingest
+# scripts/: mechanical ingest
 
 These ship inside the KB so it stays self-contained and splittable. Detection is a pure
 script (no LLM, no cost); the actual ingest invokes Claude Code headlessly.
 
-> **Run these where `raw/` actually resolves — your real machine, not a container or
+> **Run these where `raw/` actually resolves, your real machine, not a container or
 > remote sandbox.** Sources are often symlinks to local mounts (shared drives, OneDrive,
 > etc.). Inside a container those symlinks are broken, so a scan there fingerprints
 > *emptiness* and an ingest captures nothing. Sanity check: if
 > `find -L raw/<source> -type f | wc -l` is `0` for a source you know has files, the mount
-> isn't present — you're in the wrong place.
+> isn't present, you're in the wrong place.
 
-## `sweep` — move shared intake into the protected store
+## `sweep`: move shared intake into the protected store
 
 `inbox/` is a shareable staging directory; `raw/` is the protected source store you never
-share. `sweep` **moves** each item from `inbox/` into `raw/` and commits the move — so
+share. `sweep` **moves** each item from `inbox/` into `raw/` and commits the move, so
 once curated, a source leaves the shared area and contributors can't alter or delete it.
 
 ```sh
@@ -22,9 +22,9 @@ once curated, a source leaves the shared area and contributors can't alter or de
 ```
 
 It runs automatically as the first step of `ingest` (disable with `--no-sweep`).
-Name collisions never overwrite a `raw/` source — the incoming item is timestamp-suffixed.
+Name collisions never overwrite a `raw/` source, the incoming item is timestamp-suffixed.
 
-## `lint` — mechanical QA
+## `lint`: mechanical QA
 
 Structural, style, and privacy checks over `wiki/`. No LLM, no cost.
 
@@ -39,7 +39,7 @@ all-`not read` pages; dangling `[[links]]` and orphan pages; stale derived pages
 em-dash overuse); privacy heuristics (SIN-shaped numbers, credential keywords). It is the
 cheap pre-check; the LLM Lint workflow and the verify pass go deeper.
 
-## `stats` — ingestion summary
+## `stats`: ingestion summary
 
 A read-only dashboard over the state ledgers and `wiki/`. No LLM, no cost.
 
@@ -52,7 +52,7 @@ Reports: documents by read status and value tier, the remaining frontier, read-v
 counts with not-read reasons (timed-out = unreadable this pass), wiki pages by type and
 privilege tier, open `[!review]` flags, and total cost broken down by pass mode and model.
 
-## `scan` — detect changes
+## `scan`: detect changes
 
 Walks `raw/`, fingerprints each source (following symlinks into living drives), and diffs
 against `.ingest/manifest.tsv`. Writes the queue to `.ingest/pending.md`.
@@ -66,7 +66,7 @@ against `.ingest/manifest.tsv`. Writes the queue to `.ingest/pending.md`.
 `scan` (no flag) is also the drift check the Lint workflow calls; `--refresh` is the
 per-document freshness check that drives re-reading (see Progressive deepening).
 
-## `ingest` — detect + ingest
+## `ingest`: detect + ingest
 
 ```sh
 ./scripts/ingest            # Pass 1 "read": read HIGH-value docs in full
@@ -78,7 +78,7 @@ per-document freshness check that drives re-reading (see Progressive deepening).
 ./scripts/ingest --budget 5 # soft per-pass spend target (USD)
 ./scripts/ingest --watch    # live play-by-play of each step
 ./scripts/ingest --dry-run  # show what would run; no LLM, no changes
-./scripts/ingest --auto     # unattended permissions — for cron / launchd
+./scripts/ingest --auto     # unattended permissions, for cron / launchd
 ```
 
 ### Progressive deepening
@@ -87,11 +87,11 @@ Ingestion is an **anytime, iterative-deepening** loop. Run `--map` once for a ch
 skeleton that enumerates the corpus into `.ingest/coverage.tsv` (the read frontier, ordered
 by value: `notes.md` priorities, then a document-type heuristic). Then a default **read**
 pass reads the high-value docs; repeat `--deepen` to read progressively more, value-first.
-Stop after any pass — the wiki is usable throughout and the next run resumes the frontier.
+Stop after any pass, the wiki is usable throughout and the next run resumes the frontier.
 `--budget $N` caps a pass; watch actual spend in `.ingest/cost.tsv`.
 
 **Freshness.** A deepen pass auto-detects documents that changed since they were read
-(`scan --refresh` flips them to `stale`) and re-reads them by value — the frontier is
+(`scan --refresh` flips them to `stale`) and re-reads them by value, the frontier is
 `unread ∪ stale`. Default order is value-first (stale beats unread *within* a tier);
 `--fresh` reconciles all stale before expanding. It's the web-crawler coverage-vs-freshness
 trade-off, weighted by importance.
@@ -100,14 +100,14 @@ trade-off, weighted by importance.
 sources for the highest-risk pages, confirms each claim or flags it (`> [!review]`), and
 writes a row per page to `.ingest/qa.tsv` (`status · claims_checked · claims_supported ·
 confidence`). `--sample N` caps pages; `--budget $N` caps spend. `stats` reports
-`% verified`. It does not sweep, ingest, or touch the manifest — QA only.
+`% verified`. It does not sweep, ingest, or touch the manifest, QA only.
 
-Full reference — the two ledgers, the algorithm, and a guardrailed operator playbook:
+Full reference, the two ledgers, the algorithm, and a guardrailed operator playbook:
 [`../docs/deepening.md`](../docs/deepening.md).
 
 Flags combine (e.g. `--watch --auto`). Without `--watch` you get the agent's final summary
 when it finishes; **`log.md` is the durable record either way** (what was ingested + every
-`[!review]` flag). `--watch` streams each step live (read/write/etc.) — it uses
+`[!review]` flag). `--watch` streams each step live (read/write/etc.), it uses
 `--output-format stream-json` rendered readable through `jq`; install `jq` for clean output,
 or you'll see raw JSON. `--auto` stays quiet and logs to `.ingest/auto.log`.
 
@@ -115,9 +115,9 @@ If `claude` isn't on your PATH: `CLAUDE_BIN=/full/path/to/claude ./scripts/inges
 
 ### Cost & model
 
-When `jq` is installed, each run appends a row to `.ingest/cost.tsv` —
+When `jq` is installed, each run appends a row to `.ingest/cost.tsv`:
 `date · cost_usd · turns · duration_ms · sources · mode · model` (the model actually used,
-read from the run's init event) — and prints the run cost plus a running cumulative total.
+read from the run's init event), and prints the run cost plus a running cumulative total.
 The ledger is committed, so cost history travels with the KB:
 
 ```sh
@@ -176,6 +176,6 @@ launchctl unload ~/Library/LaunchAgents/dev.example.{{KB_NAME}}-ingest.plist
 ### Linux (cron)
 
 ```cron
-# daily at 07:00 — ingest anything new in this KB
+# daily at 07:00: ingest anything new in this KB
 0 7 * * * cd KBPATH && /bin/bash scripts/ingest --auto >> .ingest/auto.log 2>&1
 ```

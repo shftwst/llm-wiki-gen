@@ -1,4 +1,4 @@
-# QA — keeping the wiki trustworthy
+# QA: keeping the wiki trustworthy
 
 How to know the wiki is right enough to act on, what defends each way it can be wrong, and
 the human loop that calibrates trust without re-reading everything.
@@ -26,7 +26,7 @@ Two design choices already make that possible:
 
 | Failure | Guarded by | Residual risk |
 |---|---|---|
-| Hallucination / misread a document | read/not-read tags, `[!review]`, the verify pass | the main one — needs verification |
+| Hallucination / misread a document | read/not-read tags, `[!review]`, the verify pass | the main one, needs verification |
 | Inference stated as fact (from folder names) | "never assert from structure", not-read tags, `lint` | medium |
 | Stale data (source changed, wiki did not) | freshness: `scan --refresh`, the `stale` frontier | low |
 | Omission / coverage gaps | the coverage frontier, `stats` | medium, but visible |
@@ -44,16 +44,16 @@ re-reading the source catches that, which is what the verify pass does.
 
 Cheapest first; each layer catches a class the one below cannot.
 
-1. **`scripts/lint`** — mechanical, no LLM, run every time. Frontmatter validity, missing
+1. **`scripts/lint`**: mechanical, no LLM, run every time. Frontmatter validity, missing
    `## Sources`, all-`not read` pages, dangling links, orphans, stale derived pages, style
    tells, privacy heuristics. Catches structural and surface defects for free.
-2. **Consistency** — an LLM read of the wiki *only* (no source re-read), looking for
+2. **Consistency**: an LLM read of the wiki *only* (no source re-read), looking for
    cross-page contradictions and derived pages out of step with their sources. Folded into
    the Lint workflow. Cheaper than verification because it reads no PDFs.
-3. **`ingest --verify`** — the accuracy layer. A separate, adversarial auditor re-reads the
+3. **`ingest --verify`**: the accuracy layer. A separate, adversarial auditor re-reads the
    cited sources and confirms or refutes claims. Sampled and risk-weighted, so it is
    affordable. This is the only layer that catches hallucination.
-4. **Human + `notes.md`** — you spot-check what the verifier flagged or what matters most;
+4. **Human + `notes.md`**: you spot-check what the verifier flagged or what matters most;
    the provenance links make this near-free. Corrections go into `notes.md` and stick.
 
 A principle runs through 2 to 4: **independent, adversarial verification beats self-review.**
@@ -72,9 +72,9 @@ priority ≈ value × (1 − confidence) × stakes
 
 The system already carries every term:
 
-- **value** — the source's value tier in `coverage.tsv` (importance).
-- **confidence** — read vs not-read, and any open `[!review]`.
-- **stakes** — the page's `privilege` tier (personal-sensitive and business-sensitive cost
+- **value**: the source's value tier in `coverage.tsv` (importance).
+- **confidence**: read vs not-read, and any open `[!review]`.
+- **stakes**: the page's `privilege` tier (personal-sensitive and business-sensitive cost
   more if wrong).
 
 So a high-value, inferred, personal-sensitive page you make decisions on is audited first;
@@ -86,9 +86,9 @@ a low-value read receipt is trusted. The verify pass samples in that order.
 
 QA reads from two agent-owned ledgers, each answering a different question:
 
-- **`.ingest/coverage.tsv`** — *how deeply has each source been read, and is it current?*
+- **`.ingest/coverage.tsv`**: *how deeply has each source been read, and is it current?*
   (`unread | partial | read | stale`). This is the **confidence** signal.
-- **`.ingest/qa.tsv`** — *has each wiki page been audited against its sources?*
+- **`.ingest/qa.tsv`**: *has each wiki page been audited against its sources?*
   (`verified | flagged | unverified`, with claims checked vs supported). This is the
   **verification** signal, keyed by wiki page.
 
@@ -104,11 +104,11 @@ You decide how much to trust the wiki and how much to spend confirming it.
 
 ### The loop
 
-1. **`./scripts/lint`** — free. Fix or note anything it flags before trusting a pass. Re-run
+1. **`./scripts/lint`**: free. Fix or note anything it flags before trusting a pass. Re-run
    until errors are zero; read the warnings.
-2. **`./scripts/stats`** — see coverage and, once you have verified, `% verified`. Decide
+2. **`./scripts/stats`**: see coverage and, once you have verified, `% verified`. Decide
    what is under-verified relative to its stakes.
-3. **`./scripts/ingest --verify --sample N --watch`** — audit the highest-risk pages.
+3. **`./scripts/ingest --verify --sample N --watch`**: audit the highest-risk pages.
    Watch the stream; the auditor re-reads sources and flags unsupported claims.
 4. **Review the flags.** Each `flagged` page now carries a `> [!review]` naming what failed.
    Open the cited source via its `## Sources` link and judge. A real error goes into
@@ -117,12 +117,12 @@ You decide how much to trust the wiki and how much to spend confirming it.
 
 ### Guardrails
 
-- **Cost is dialed** — `--sample N` and `--budget $N` per pass; `stats` shows verify spend
+- **Cost is dialed**: `--sample N` and `--budget $N` per pass; `stats` shows verify spend
   as its own `mode=verify` line in the cost ledger.
-- **QA never mutates sources or coverage** — the verify pass does not sweep, ingest, or
+- **QA never mutates sources or coverage**: the verify pass does not sweep, ingest, or
   advance the manifest. The worst it does is add a `[!review]` and a `qa.tsv` row.
-- **Everything is git** — every pass is a commit; revert any you dislike.
-- **Honesty is enforced** — the auditor defaults to unsupported, so silence reads as doubt,
+- **Everything is git**: every pass is a commit; revert any you dislike.
+- **Honesty is enforced**: the auditor defaults to unsupported, so silence reads as doubt,
   not approval.
 
 ---

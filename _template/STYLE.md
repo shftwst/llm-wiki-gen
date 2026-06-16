@@ -1,9 +1,10 @@
-# Writing style — avoid AI-writing tells
+# Writing style: avoid AI-writing tells
 
-This guide governs how every wiki page is written. The goal: pages read like concrete
-reference notes from someone who knows the material, not like generated filler. LLM prose
-has recognisable tells (catalogued in Wikipedia's "Signs of AI writing"); avoid all of
-them. Read this before you write or edit any page.
+This guide governs how everything in this repo is written: every wiki page, and every doc
+and README too. The goal: text reads like concrete reference notes from someone who knows
+the material, not like generated filler. LLM prose has recognisable tells (catalogued in
+Wikipedia's "Signs of AI writing"); avoid all of them. Read this before you write or edit
+any page or doc.
 
 ## The one principle
 

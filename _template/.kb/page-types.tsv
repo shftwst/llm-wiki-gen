@@ -1,0 +1,13 @@
+# page-types.tsv — the page-type vocabulary for this KB (the `type:` frontmatter value).
+# Edit to fit your domain. lint validates `type` against this list; `class` drives behavior:
+#   content = needs ## Sources, prose is subject-only, carries a privilege tier
+#   source  = a page whose subject IS a source (provenance is allowed in its prose)
+#   nav     = catalog/home pages (index, overview); skipped when publishing
+# Columns: type<TAB>class<TAB>dir<TAB>note     (dir = suggested subdir under wiki/)
+source	source	sources	summary of one ingested source; provenance is its subject
+entity	content	entities	a concrete thing the domain tracks (client, person, vendor, tool)
+concept	content	concepts	an idea, policy, or topic that spans sources
+comparison	content	analysis	a durable synthesized answer across pages
+analysis	content	analysis	a synthesized analysis across documents
+overview	nav	.	the evolving top-level synthesis / home page
+index	nav	.	the content catalog of every page

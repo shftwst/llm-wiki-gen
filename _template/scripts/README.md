@@ -10,6 +10,20 @@ script (no LLM, no cost); the actual ingest invokes Claude Code headlessly.
 > `find -L raw/<source> -type f | wc -l` is `0` for a source you know has files, the mount
 > isn't present, you're in the wrong place.
 
+## Schema config (`.kb/`)
+
+Two TSVs define this KB's vocabularies; edit them to fit your domain (the scripts read them
+through `scripts/kblib.sh`, falling back to the shipped defaults if a file is absent):
+
+- **`.kb/page-types.tsv`** — the `type:` values (`type · class · dir · note`). `class` is
+  `content` (needs `## Sources`, prose is subject-only, carries a privilege tier), `source`
+  (provenance is the page's subject), or `nav` (catalog/home pages, skipped when publishing).
+  `lint` validates every page's `type` against this list.
+- **`.kb/privilege-tiers.tsv`** — the `privilege:` ladder (`tier · rank · classify · note`),
+  ordered least to most sensitive. `lint` validates `privilege`; `classify` maps its keyword
+  buckets to the tiers marked `business` / `personal`; `.publish/roles.tsv` grants each role a
+  subset of these tiers.
+
 ## `sweep`: move shared intake into the protected store
 
 `inbox/` is a shareable staging directory; `raw/` is the protected source store you never
@@ -58,8 +72,9 @@ pass mode and model.
 
 Tags each coverage item with a sensitivity tier (`default | business-sensitive |
 personal-sensitive`) from path and keyword heuristics. No LLM, no cost, never reads document
-contents. Fail-safe: an unmatched item falls to a conservative floor (`CLASSIFY_FLOOR`,
-default `business-sensitive`). Writes `.ingest/sensitivity.tsv`.
+contents. Tiers come from `.kb/privilege-tiers.tsv` (the keyword buckets map to whichever tiers
+are marked `business` / `personal`). Fail-safe: an unmatched item falls to a conservative floor
+(`CLASSIFY_FLOOR`, default = the `business`-bucket tier). Writes `.ingest/sensitivity.tsv`.
 
 ```sh
 ./scripts/classify            # classify all coverage items

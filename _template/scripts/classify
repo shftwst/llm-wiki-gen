@@ -6,8 +6,13 @@
 #
 # Deterministic: it matches keywords in each coverage item's path and notes and never reads
 # document contents (the "without reading the full document" case). Fail-safe: an item that
-# matches no keyword falls to a conservative floor (CLASSIFY_FLOOR, default business-sensitive)
-# so it is never under-classified.
+# matches no keyword falls to a conservative floor (CLASSIFY_FLOOR) so it is never
+# under-classified.
+#
+# Tier names come from .kb/privilege-tiers.tsv: the keyword buckets map to whichever tiers are
+# marked `personal` / `business` there, and the floor defaults to the `business` bucket. So a
+# KB can rename or re-rank its tiers without editing this script. The keyword lists below are
+# the domain heuristic; tune them per KB as needed.
 #
 # This is Phase 1 of the sensitivity-aware routing design (llm-wiki-kit docs/routing.md).
 # It only TAGS; nothing routes on the tag yet. Sensitivity lives in its own sidecar ledger
@@ -15,22 +20,27 @@
 
 set -eu
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$KB_DIR/scripts/kblib.sh"   # privilege-tier vocabulary (.kb/privilege-tiers.tsv)
 COVERAGE="$KB_DIR/.ingest/coverage.tsv"
 SENS="$KB_DIR/.ingest/sensitivity.tsv"
 DATE="$(date +%F)"
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
-FLOOR="${CLASSIFY_FLOOR:-business-sensitive}"   # fail-safe default for unmatched items
+
+PERSONAL_TIER="$(kb_tier_for_bucket personal)"
+BUSINESS_TIER="$(kb_tier_for_bucket business)"
+FLOOR="${CLASSIFY_FLOOR:-$BUSINESS_TIER}"   # fail-safe default for unmatched items
 
 [ -f "$COVERAGE" ] || { echo "classify: no coverage.tsv — run ./scripts/ingest --map first."; exit 0; }
 
-HEADER=$'# sensitivity.tsv — estimated sensitivity per coverage item (script-owned; written by scripts/classify).\n# Columns: item\ttier\tbasis\tdate     tier: default | business-sensitive | personal-sensitive\n# Deterministic path/keyword heuristic, fail-safe. Phase 1 of docs/routing.md; nothing routes on it yet.'
+tierlist="$(kb_tiers | paste -sd'|' - | sed 's/|/ | /g')"
+HEADER="$(printf '# sensitivity.tsv — estimated sensitivity per coverage item (script-owned; written by scripts/classify).\n# Columns: item\ttier\tbasis\tdate     tier: %s\n# Deterministic path/keyword heuristic, fail-safe. Phase 1 of docs/routing.md; nothing routes on it yet.' "$tierlist")"
 
 tier_for() {  # prints "tier<TAB>basis" for the lowercased text in $1
   case " $1 " in
     *t4*|*t5*|*payroll*|*" sin "*|*"social insurance"*|*passport*|*" hr "*|*employment*|*benefit*|*hsa*|*medical*|*salary*|*paystub*|*personal*)
-      printf 'personal-sensitive\tpersonal / HR / payroll keyword';;
+      printf '%s\tpersonal / HR / payroll keyword' "$PERSONAL_TIER";;
     *tax*|*financ*|*statement*|*bank*|*invoice*|*contract*|*agreement*|*client*|*legal*|*minute*|*resolution*|*cap-table*|*insurance*|*gst*|*hst*|*option*|*dividend*)
-      printf 'business-sensitive\tbusiness / financial / legal keyword';;
+      printf '%s\tbusiness / financial / legal keyword' "$BUSINESS_TIER";;
     *)
       printf '%s\tno keyword (fail-safe floor)' "$FLOOR";;
   esac
@@ -38,7 +48,7 @@ tier_for() {  # prints "tier<TAB>basis" for the lowercased text in $1
 
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
 printf '%s\n' "$HEADER" > "$tmp"
-n=0; p=0; b=0; d=0
+n=0
 while IFS= read -r row; do
   case "$row" in ''|'#'*) continue;; esac
   item="${row%%	*}"
@@ -46,14 +56,15 @@ while IFS= read -r row; do
   tier="${res%%	*}"; basis="${res#*	}"
   printf '%s\t%s\t%s\t%s\n' "$item" "$tier" "$basis" "$DATE" >> "$tmp"
   n=$((n + 1))
-  case "$tier" in personal-sensitive) p=$((p+1));; business-sensitive) b=$((b+1));; *) d=$((d+1));; esac
 done < <(grep -v '^#' "$COVERAGE")
 
+# per-tier breakdown, generalised over whatever tiers the KB defines
+counts="$(for t in $(kb_tiers); do c="$(awk -F'\t' -v t="$t" '$1!~/^#/ && $2==t{k++} END{print k+0}' "$tmp")"; printf ' %s=%s' "$t" "$c"; done)"
+
 if [ "$DRY" -eq 1 ]; then
-  printf 'classify: [dry-run] %d items → personal %d, business %d, default %d (floor=%s). Nothing written.\n' "$n" "$p" "$b" "$d" "$FLOOR"
+  printf 'classify: [dry-run] %d items →%s (floor=%s). Nothing written.\n' "$n" "$counts" "$FLOOR"
   grep -v '^#' "$tmp" | cut -f1-2 | sed 's/^/  /'
   exit 0
 fi
 mv "$tmp" "$SENS"; trap - EXIT
-printf 'classify: %d items → personal-sensitive %d, business-sensitive %d, default %d (floor=%s) → %s\n' \
-  "$n" "$p" "$b" "$d" "$FLOOR" "${SENS#"$KB_DIR"/}"
+printf 'classify: %d items →%s (floor=%s) → %s\n' "$n" "$counts" "$FLOOR" "${SENS#"$KB_DIR"/}"

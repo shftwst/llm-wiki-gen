@@ -10,6 +10,7 @@
 
 set -eu   # no pipefail: `grep ... | wc` deliberately tolerates no-match
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$KB_DIR/scripts/kblib.sh"   # page-type + privilege-tier vocabularies (.kb/)
 WIKI="$KB_DIR/wiki"
 QUIET=0; [ "${1:-}" = "--quiet" ] && QUIET=1
 [ -d "$WIKI" ] || { echo "lint: no wiki/ yet."; exit 0; }
@@ -33,7 +34,9 @@ for f in $pages; do
     grep -qE "^$k:" "$f" || err "$rel: missing frontmatter '$k:'"
   done
   pv="$(fm "$f" privilege)"
-  case "$pv" in default|business-sensitive|personal-sensitive|"") ;; *) warn "$rel: unknown privilege '$pv'";; esac
+  [ -z "$pv" ] || kb_tier_valid "$pv" || warn "$rel: unknown privilege '$pv' (not in .kb/privilege-tiers.tsv)"
+  ty="$(fm "$f" type)"
+  [ -z "$ty" ] || kb_type_valid "$ty" || warn "$rel: unknown type '$ty' (not in .kb/page-types.tsv)"
 done
 
 # --- content pages should have ## Sources; flag all-not-read pages ----------
@@ -41,15 +44,12 @@ done
 sect "citations"
 for f in $pages; do
   rel=${f#"$WIKI"/}; ty="$(fm "$f" type)"
-  case "$ty" in
-    entity|concept|comparison|analysis)
-      if ! grep -qE '^## Sources' "$f"; then warn "$rel: type=$ty but no '## Sources' section (un-cited / not yet deepened)"; continue; fi
-      src="$(sed -n '/^## Sources/,$p' "$f")"
-      total=$(printf '%s\n' "$src" | grep -cE '^- ' || true)
-      rin=$(printf '%s\n' "$src" | grep -cE 'read in full' || true)
-      [ "${total:-0}" -gt 0 ] && [ "${rin:-0}" -eq 0 ] && warn "$rel: every source marked 'not read' (claims may be inferred)"
-      ;;
-  esac
+  [ "$(kb_type_class "$ty")" = content ] || continue   # only content pages must cite
+  if ! grep -qE '^## Sources' "$f"; then warn "$rel: type=$ty but no '## Sources' section (un-cited / not yet deepened)"; continue; fi
+  src="$(sed -n '/^## Sources/,$p' "$f")"
+  total=$(printf '%s\n' "$src" | grep -cE '^- ' || true)
+  rin=$(printf '%s\n' "$src" | grep -cE 'read in full' || true)
+  [ "${total:-0}" -gt 0 ] && [ "${rin:-0}" -eq 0 ] && warn "$rel: every source marked 'not read' (claims may be inferred)"
 done
 
 # --- dangling wikilinks + orphans -------------------------------------------
@@ -93,12 +93,13 @@ done
 sect "prose hygiene"
 # A body mention of a source page's own slug is provenance ("drawn from [[shared-drive]]");
 # that belongs in ## Sources, so fold the source slugs into the pattern (KB-agnostic).
-srcre="$(for f in $pages; do [ "$(fm "$f" type)" = source ] && basename "$f" .md; done | paste -sd'|' - || true)"
+srcre="$(for f in $pages; do [ "$(kb_type_class "$(fm "$f" type)")" = source ] && basename "$f" .md; done | paste -sd'|' - || true)"
 pat='read in full|not read|this pass|map pass|deferred to a later|first ingest|derived from|coverage row|[Ss]ource:'
 [ -n "$srcre" ] && pat="$pat|\\[\\[($srcre)([]|#])"
 for f in $pages; do
   rel=${f#"$WIKI"/}; ty="$(fm "$f" type)"
-  case "$ty" in source|index) continue;; esac
+  case "$(kb_type_class "$ty")" in source) continue;; esac   # source pages: provenance is their subject
+  [ "$ty" = index ] && continue                              # the catalog is an auto-generated link list
   body="$(awk 'NR==1&&/^---/{infm=1;next} infm&&/^---/{infm=0;next} infm{next} /^## Sources/{exit} {print}' "$f")"
   hit="$(printf '%s\n' "$body" | grep -inE "$pat" || true)"
   if [ -n "$hit" ]; then

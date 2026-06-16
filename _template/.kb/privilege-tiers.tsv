@@ -1,0 +1,8 @@
+# privilege-tiers.tsv — the sensitivity ladder for this KB (the `privilege:` frontmatter value).
+# Ordered least to most sensitive by rank. Lowest rank is the default (nothing confidential).
+# roles.tsv grants each published role a subset; classify maps keyword buckets to tiers;
+# lint validates `privilege` against this list.
+# Columns: tier<TAB>rank<TAB>classify<TAB>note   (classify = keyword bucket: business | personal | -)
+default	0	-	ordinary content; nothing confidential
+business-sensitive	1	business	contracts, rates, financial statements, tax filings, banking
+personal-sensitive	2	personal	HR, payroll (T4/T5), benefits, anything with personal identifiers

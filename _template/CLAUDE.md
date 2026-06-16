@@ -148,7 +148,10 @@ files.
 > fine; a number that *grants access* is not.
 
 Every page carries a **`privilege`** tier in frontmatter so privileged content can be
-categorised. *Not gated yet, purely a label* (access control may come later):
+categorised. The tier ladder is configurable per KB in `.kb/privilege-tiers.tsv` (least to
+most sensitive; lint validates `privilege` against it, `classify` maps keyword buckets to it,
+and `roles.tsv` grants each published role a subset). *Not gated yet, purely a label* (access
+control may come later). The defaults that ship with the kit:
 
 - **`default`**: ordinary content; nothing confidential.
 - **`business-sensitive`**: derived from confidential business material: contracts, rates,
@@ -160,6 +163,12 @@ Set the tier as you write each page; when a page draws on several, use the **mos
 sensitive. Default to `default` only when nothing sensitive is involved.
 
 ### Page types
+
+The type vocabulary is configurable per KB in `.kb/page-types.tsv` (lint validates `type`
+against it). Each type has a **class** that drives behavior: `content` pages need `## Sources`
+and carry a privilege tier; a `source` page's subject is a source (so provenance is allowed in
+its prose); `nav` pages (index, overview) are catalogs skipped when publishing. The defaults
+that ship with the kit:
 
 - **source**: a summary of one ingested source. Lives in `wiki/sources/`. Records
   provenance, key takeaways, and `[[links]]` to the entity/concept pages it touches.

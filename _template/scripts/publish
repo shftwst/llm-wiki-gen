@@ -11,11 +11,12 @@
 # content is always available (e.g. for a non-Quartz generator); if git/npm are missing the
 # build stops there with instructions instead of installing Quartz.
 #
-# Roles and the privilege tiers each may see are defined in .publish/roles.tsv. Pages above a
-# role's clearance are excluded; links to excluded pages and all ../raw/ citation links are
-# de-linked so the published site has no broken links and no paths into private sources.
-# index.md and overview.md are skipped (they catalog the whole graph); a minimal role-view
-# index.md is generated so the site root resolves. Quartz builds its own navigation.
+# Roles and the privilege tiers each may see are defined in .publish/roles.tsv; the tier and
+# page-type vocabularies live in .kb/ (read via scripts/kblib.sh). Pages above a role's
+# clearance are excluded; links to excluded pages and all ../raw/ citation links are de-linked
+# so the published site has no broken links and no paths into private sources. Pages whose type
+# class is `nav` (index, overview) are skipped; a minimal role-view index.md is generated so the
+# site root resolves. Quartz builds its own navigation.
 #
 # The site title (Quartz's header, and the landing page) is the KB's own title, read from the
 # overview's `title:`/H1 (which the ingest infers from the sources), falling back to the
@@ -30,6 +31,7 @@
 
 set -eu
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$KB_DIR/scripts/kblib.sh"   # page-type + privilege-tier vocabularies (.kb/)
 WIKI="$KB_DIR/wiki"
 ROLES="$KB_DIR/.publish/roles.tsv"
 QZ="${QUARTZ_DIR:-$KB_DIR/.publish/quartz}"
@@ -46,6 +48,7 @@ fi
 list_roles() { grep -v '^#' "$ROLES" 2>/dev/null | cut -f1 | paste -sd' ' -; }
 all_roles()  { grep -v '^#' "$ROLES" 2>/dev/null | cut -f1; }
 fm_priv() { awk -F': ' '/^privilege:/{print $2; exit}' "$1"; }
+fm_type() { awk -F': ' '/^type:/{print $2; exit}' "$1"; }
 
 # kb_title: the human title of this KB, inferred by the ingest and read here (publish runs no
 # LLM). Resolution order: $KB_TITLE override, then the overview's frontmatter `title:`, then
@@ -76,6 +79,7 @@ quartz_set_title() {
 [ "$ALL" = 1 ] || [ -n "$ROLE" ] || { echo "usage: publish <role> [--dry-run|--serve] | publish --all [--dry-run]   (roles: $(list_roles))"; exit 1; }
 [ -d "$WIKI" ] || { echo "publish: no wiki/ yet."; exit 0; }
 TITLE="$(kb_title)"
+DEFAULT_TIER="$(kb_tiers | head -1)"   # lowest-rank tier; the privilege of pages with none set
 
 # stage_role <role> <content-dir>: filter the role's cleared pages into <content-dir>, de-link
 # anything outside the set, and generate a landing index.md. Prints an include/exclude summary.
@@ -86,22 +90,24 @@ stage_role() {
   [ -n "$allowed" ] || { echo "publish: role '$role' not in roles.tsv (have: $(list_roles))" >&2; return 1; }
   allow_re="^($(printf '%s' "$allowed" | tr -d ' ' | tr ',' '|'))$"
 
-  inc_file="$(mktemp)"
-  incn=0; exc=0; pP=0; pB=0; pD=0
+  inc_file="$(mktemp)"; tiers_tmp="$(mktemp)"
+  incn=0; exc=0
   for f in $(find "$WIKI" -name '*.md' | sort); do
     base="$(basename "$f" .md)"
-    case "$base" in index|overview) continue;; esac     # catalogs; Quartz builds nav
-    pv="$(fm_priv "$f")"; pv="${pv:-default}"
+    case "$(kb_type_class "$(fm_type "$f")")" in nav) continue;; esac   # catalogs/home; Quartz builds nav
+    pv="$(fm_priv "$f")"; pv="${pv:-$DEFAULT_TIER}"
     if printf '%s' "$pv" | grep -qE "$allow_re"; then
       printf '%s\n' "$base" >> "$inc_file"; incn=$((incn+1))
-      case "$pv" in personal-sensitive) pP=$((pP+1));; business-sensitive) pB=$((pB+1));; *) pD=$((pD+1));; esac
+      printf '%s\n' "$pv" >> "$tiers_tmp"
     else
       exc=$((exc+1))
     fi
   done
 
+  brk="$(for t in $(kb_tiers); do c="$(grep -cxF "$t" "$tiers_tmp" 2>/dev/null || true)"; printf ' %s=%s' "$t" "$c"; done)"
+  rm -f "$tiers_tmp"
   printf 'publish[%s]: clearance = %s\n' "$role" "$allowed"
-  printf '  include %d (default %d, business %d, personal %d) · exclude %d above clearance\n' "$incn" "$pD" "$pB" "$pP" "$exc"
+  printf '  include %d ·%s · exclude %d above clearance\n' "$incn" "$brk" "$exc"
   if [ "$MODE" = dry ]; then rm -f "$inc_file"; return 0; fi
 
   rm -rf "$out"; mkdir -p "$out"

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# ingest-new.sh — ingest sources via headless Claude Code, with progressive-deepening
+# ingest — ingest sources via headless Claude Code, with progressive-deepening
 # passes (iterative deepening / anytime). Stop after any pass; resume later.
 #
-#   ./scripts/ingest-new.sh             Pass 1 "read": sweep, scan, read HIGH-value docs
-#   ./scripts/ingest-new.sh --map       Pass 0 "map": cheap skeleton + build coverage frontier
-#   ./scripts/ingest-new.sh --deepen    Pass 2+: read the next highest-value unread docs
-#   ./scripts/ingest-new.sh --budget N  soft per-pass spend target in USD (e.g. --budget 5)
-#   ./scripts/ingest-new.sh --watch     live play-by-play of each step
-#   ./scripts/ingest-new.sh --dry-run   show what would run (no LLM, no cost)
-#   ./scripts/ingest-new.sh --auto      unattended permissions (cron / launchd)
-#   ./scripts/ingest-new.sh --no-sweep  skip the inbox→raw sweep
+#   ./scripts/ingest             Pass 1 "read": sweep, scan, read HIGH-value docs
+#   ./scripts/ingest --map       Pass 0 "map": cheap skeleton + build coverage frontier
+#   ./scripts/ingest --deepen    Pass 2+: read the next highest-value unread docs
+#   ./scripts/ingest --budget N  soft per-pass spend target in USD (e.g. --budget 5)
+#   ./scripts/ingest --watch     live play-by-play of each step
+#   ./scripts/ingest --dry-run   show what would run (no LLM, no cost)
+#   ./scripts/ingest --auto      unattended permissions (cron / launchd)
+#   ./scripts/ingest --no-sweep  skip the inbox→raw sweep
 #
 # The passes form an anytime loop over .ingest/coverage.tsv (the read frontier, agent-owned):
 # map → read → deepen → deepen … value-ordered (notes.md priorities, then type heuristic),
@@ -27,7 +27,7 @@ SWEEP="$KB_DIR/scripts/sweep.sh"
 PENDING="$KB_DIR/.ingest/pending.md"
 COVERAGE="$KB_DIR/.ingest/coverage.tsv"
 COST_TSV="$KB_DIR/.ingest/cost.tsv"
-COST_HEADER=$'# cost.tsv — per-run ingest cost ledger (appended by scripts/ingest-new.sh).\n# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode'
+COST_HEADER=$'# cost.tsv — per-run ingest cost ledger (appended by scripts/ingest).\n# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode'
 
 DRY_RUN=0; AUTO=0; WATCH=0; SWEEP_ENABLED=1; MODE=read; BUDGET=""
 while [ $# -gt 0 ]; do
@@ -36,12 +36,12 @@ while [ $# -gt 0 ]; do
     --auto)     AUTO=1;;
     --watch)    WATCH=1;;
     --no-sweep) SWEEP_ENABLED=0;;
-    --map)      [ "$MODE" = "deepen" ] && { echo "ingest-new: --map and --deepen are mutually exclusive" >&2; exit 1; }; MODE=map;;
-    --deepen)   [ "$MODE" = "map" ]    && { echo "ingest-new: --map and --deepen are mutually exclusive" >&2; exit 1; }; MODE=deepen;;
+    --map)      [ "$MODE" = "deepen" ] && { echo "ingest: --map and --deepen are mutually exclusive" >&2; exit 1; }; MODE=map;;
+    --deepen)   [ "$MODE" = "map" ]    && { echo "ingest: --map and --deepen are mutually exclusive" >&2; exit 1; }; MODE=deepen;;
     --budget)   shift; BUDGET="${1:-}";;
     --budget=*) BUDGET="${1#--budget=}";;
     "") ;;
-    *) echo "ingest-new: unknown arg: $1" >&2; exit 1;;
+    *) echo "ingest: unknown arg: $1" >&2; exit 1;;
   esac
   shift
 done
@@ -85,28 +85,28 @@ esac
 # --- sweep inbox → raw -------------------------------------------------------
 if [ "$SWEEP_ENABLED" -eq 1 ] && [ -x "$SWEEP" ]; then
   if [ "$DRY_RUN" -eq 1 ]; then bash "$SWEEP" --dry-run || true
-  else bash "$SWEEP" || echo "ingest-new: sweep failed — continuing with existing raw/." >&2; fi
+  else bash "$SWEEP" || echo "ingest: sweep failed — continuing with existing raw/." >&2; fi
 fi
 
 # --- gate: deepen is driven by the coverage frontier; map/read by scan -------
 if [ "$MODE" = "deepen" ]; then
   # an "unread" item = a non-comment row whose status column (3) is exactly unread
   if [ ! -f "$COVERAGE" ] || ! awk -F'\t' '$1 !~ /^#/ && $3 == "unread" {f=1} END{exit f?0:1}' "$COVERAGE" 2>/dev/null; then
-    echo "ingest-new: nothing left to deepen — no 'unread' items in coverage.tsv. Run --map (or a read pass) first if coverage is empty."
+    echo "ingest: nothing left to deepen — no 'unread' items in coverage.tsv. Run --map (or a read pass) first if coverage is empty."
     exit 0
   fi
   bash "$SCAN" >/dev/null 2>&1 || true   # refresh state; don't gate on it
 else
   set +e; bash "$SCAN"; code=$?; set -e
   case "$code" in
-    0)  echo "ingest-new: nothing pending — done."; exit 0;;
+    0)  echo "ingest: nothing pending — done."; exit 0;;
     10) ;;  # pending work exists
-    *)  echo "ingest-new: scan failed (exit $code)" >&2; exit "$code";;
+    *)  echo "ingest: scan failed (exit $code)" >&2; exit "$code";;
   esac
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "ingest-new: [dry-run] mode=$MODE${BUDGET:+ budget=\$$BUDGET}. Would run, in $KB_DIR:"
+  echo "ingest: [dry-run] mode=$MODE${BUDGET:+ budget=\$$BUDGET}. Would run, in $KB_DIR:"
   if [ "$HAVE_JQ" -eq 1 ]; then
     echo "  $CLAUDE_BIN -p ${PERM[*]} --model $MODEL --output-format stream-json --verbose \"<$MODE prompt>\""
     echo "  → ${WATCH:+live steps, }final summary, and append cost to .ingest/cost.tsv"
@@ -114,16 +114,16 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "  $CLAUDE_BIN -p ${PERM[*]} --model $MODEL \"<$MODE prompt>\"   (jq absent: plain text, no cost ledger)"
   fi
   echo "  then: scripts/scan.sh --accept && git add -A && git commit"
-  echo "ingest-new: [dry-run] no changes made."
+  echo "ingest: [dry-run] no changes made."
   exit 0
 fi
 
 command -v "$CLAUDE_BIN" >/dev/null 2>&1 \
-  || { echo "ingest-new: '$CLAUDE_BIN' not found. Set CLAUDE_BIN=/path/to/claude." >&2; exit 127; }
-[ "$HAVE_JQ" -eq 0 ] && echo "ingest-new: jq not found — no live steps or cost ledger (install jq to enable)." >&2
+  || { echo "ingest: '$CLAUDE_BIN' not found. Set CLAUDE_BIN=/path/to/claude." >&2; exit 127; }
+[ "$HAVE_JQ" -eq 0 ] && echo "ingest: jq not found — no live steps or cost ledger (install jq to enable)." >&2
 
 SOURCES_N="$(grep -cE '^- ' "$PENDING" 2>/dev/null || true)"
-echo "ingest-new: $MODE pass${BUDGET:+ (budget \$$BUDGET)} via $CLAUDE_BIN ..."
+echo "ingest: $MODE pass${BUDGET:+ (budget \$$BUDGET)} via $CLAUDE_BIN ..."
 
 rc=0
 if [ "$HAVE_JQ" -eq 1 ]; then
@@ -146,9 +146,9 @@ if [ "$HAVE_JQ" -eq 1 ]; then
     [ -f "$COST_TSV" ] || printf '%s\n' "$COST_HEADER" > "$COST_TSV"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F)" "$COST" "${TURNS:-}" "${DUR:-}" "$SOURCES_N" "$MODE" >> "$COST_TSV"
     TOTAL="$(awk -F'\t' '$1 !~ /^#/ {s+=$2} END{printf "%.4f", s+0}' "$COST_TSV")"
-    printf 'ingest-new: cost $%s (%s turns, %s pass) — cumulative $%s\n' "$COST" "${TURNS:-?}" "$MODE" "$TOTAL"
+    printf 'ingest: cost $%s (%s turns, %s pass) — cumulative $%s\n' "$COST" "${TURNS:-?}" "$MODE" "$TOTAL"
   else
-    echo "ingest-new: no cost field in result — cost ledger not updated." >&2
+    echo "ingest: no cost field in result — cost ledger not updated." >&2
   fi
 else
   ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" --model "$MODEL" "$PROMPT" )
@@ -156,20 +156,20 @@ else
 fi
 
 if [ "$rc" -ne 0 ]; then
-  echo "ingest-new: $MODE pass failed (exit $rc) — manifest NOT advanced, no commit." >&2
+  echo "ingest: $MODE pass failed (exit $rc) — manifest NOT advanced, no commit." >&2
   exit "$rc"
 fi
 
 # Guard against silent no-ops (incl. a cancelled run — Claude Code exits 0 on cancel).
 CHANGED="$(git -C "$KB_DIR" status --porcelain -- wiki log.md .ingest/coverage.tsv 2>/dev/null || true)"
 if [ -z "$CHANGED" ]; then
-  echo "ingest-new: the run produced NO changes to wiki/, log.md, or coverage.tsv — nothing ingested." >&2
-  echo "ingest-new: baseline NOT advanced. (Run cancelled, or raw/ content unreadable?)" >&2
+  echo "ingest: the run produced NO changes to wiki/, log.md, or coverage.tsv — nothing ingested." >&2
+  echo "ingest: baseline NOT advanced. (Run cancelled, or raw/ content unreadable?)" >&2
   exit 3
 fi
 
-echo "ingest-new: advancing manifest baseline + committing ..."
+echo "ingest: advancing manifest baseline + committing ..."
 "$SCAN" --accept >/dev/null
 ( cd "$KB_DIR" && git add -A && git commit -q -m "Mechanical ingest — $MODE pass ($(date +%F))" ) \
-  || echo "ingest-new: nothing to commit."
-echo "ingest-new: done."
+  || echo "ingest: nothing to commit."
+echo "ingest: done."

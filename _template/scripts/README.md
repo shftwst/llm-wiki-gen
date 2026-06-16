@@ -21,7 +21,7 @@ once curated, a source leaves the shared area and contributors can't alter or de
 ./scripts/sweep.sh --dry-run  # show what would move; move nothing
 ```
 
-It runs automatically as the first step of `ingest-new.sh` (disable with `--no-sweep`).
+It runs automatically as the first step of `ingest` (disable with `--no-sweep`).
 Name collisions never overwrite a `raw/` source — the incoming item is timestamp-suffixed.
 
 ## `scan.sh` — detect changes
@@ -37,16 +37,16 @@ against `.ingest/manifest.tsv`. Writes the queue to `.ingest/pending.md`.
 This is also the drift check the Lint workflow calls — it covers files, directories, and
 living symlink targets in one pass.
 
-## `ingest-new.sh` — detect + ingest
+## `ingest` — detect + ingest
 
 ```sh
-./scripts/ingest-new.sh            # Pass 1 "read": read HIGH-value docs in full
-./scripts/ingest-new.sh --map      # Pass 0 "map": cheap skeleton + build coverage frontier
-./scripts/ingest-new.sh --deepen   # Pass 2+: read the next highest-value unread docs
-./scripts/ingest-new.sh --budget 5 # soft per-pass spend target (USD)
-./scripts/ingest-new.sh --watch    # live play-by-play of each step
-./scripts/ingest-new.sh --dry-run  # show what would run; no LLM, no changes
-./scripts/ingest-new.sh --auto     # unattended permissions — for cron / launchd
+./scripts/ingest            # Pass 1 "read": read HIGH-value docs in full
+./scripts/ingest --map      # Pass 0 "map": cheap skeleton + build coverage frontier
+./scripts/ingest --deepen   # Pass 2+: read the next highest-value unread docs
+./scripts/ingest --budget 5 # soft per-pass spend target (USD)
+./scripts/ingest --watch    # live play-by-play of each step
+./scripts/ingest --dry-run  # show what would run; no LLM, no changes
+./scripts/ingest --auto     # unattended permissions — for cron / launchd
 ```
 
 ### Progressive deepening
@@ -67,7 +67,7 @@ when it finishes; **`log.md` is the durable record either way** (what was ingest
 `--output-format stream-json` rendered readable through `jq`; install `jq` for clean output,
 or you'll see raw JSON. `--auto` stays quiet and logs to `.ingest/auto.log`.
 
-If `claude` isn't on your PATH: `CLAUDE_BIN=/full/path/to/claude ./scripts/ingest-new.sh`.
+If `claude` isn't on your PATH: `CLAUDE_BIN=/full/path/to/claude ./scripts/ingest`.
 
 ### Cost & model
 
@@ -82,7 +82,7 @@ awk -F'\t' '$1!~/^#/{s+=$2} END{printf "total $%.4f\n", s}' .ingest/cost.tsv
 The ingest model defaults to **`claude-opus-4-8`**. Override per run with `CLAUDE_MODEL`:
 
 ```sh
-CLAUDE_MODEL=claude-sonnet-4-6 ./scripts/ingest-new.sh   # cheaper/faster for small batches
+CLAUDE_MODEL=claude-sonnet-4-6 ./scripts/ingest   # cheaper/faster for small batches
 ```
 
 On success it advances `.ingest/manifest.tsv` and commits. The manifest only advances when
@@ -90,7 +90,7 @@ the ingest run exits cleanly, so an interrupted run leaves the queue intact for 
 
 ## Opt-in auto-ingest
 
-Enable this once you trust the supervised flow. Both options run `ingest-new.sh --auto` on
+Enable this once you trust the supervised flow. Both options run `ingest --auto` on
 a cadence; runs where `raw/` hasn't changed do nothing (detection is free). Replace
 `KBPATH` with this KB's absolute path.
 
@@ -109,7 +109,7 @@ daily at 07:00:
   <key>Label</key>            <string>dev.example.{{KB_NAME}}-ingest</string>
   <key>ProgramArguments</key> <array>
     <string>/bin/bash</string>
-    <string>KBPATH/scripts/ingest-new.sh</string>
+    <string>KBPATH/scripts/ingest</string>
     <string>--auto</string>
   </array>
   <key>StartCalendarInterval</key> <dict>
@@ -132,5 +132,5 @@ launchctl unload ~/Library/LaunchAgents/dev.example.{{KB_NAME}}-ingest.plist
 
 ```cron
 # daily at 07:00 — ingest anything new in this KB
-0 7 * * * cd KBPATH && /bin/bash scripts/ingest-new.sh --auto >> .ingest/auto.log 2>&1
+0 7 * * * cd KBPATH && /bin/bash scripts/ingest --auto >> .ingest/auto.log 2>&1
 ```

@@ -1,7 +1,7 @@
 # inbox/ — shared intake (staging)
 
 Drop files or folders here for the knowledge base. A privileged **sweep**
-(`scripts/sweep.sh`, also the first step of `scripts/ingest-new.sh`) **moves** each item
+(`scripts/sweep.sh`, also the first step of `scripts/ingest`) **moves** each item
 into `raw/`, the protected source store.
 
 This is the **only** directory meant to be shared. Share `inbox/` — e.g. make it a shared

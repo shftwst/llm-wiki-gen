@@ -15,7 +15,7 @@ different questions and have different owners.
 - Columns: `source_path · kind · fingerprint · last_ingested`.
 - Owned by **`scripts/scan.sh`**. The agent never touches it.
 - `scan.sh` fingerprints each source (following living symlinks) and diffs against this
-  baseline to classify **new / changed / removed**. `ingest-new.sh` advances it
+  baseline to classify **new / changed / removed**. `ingest` advances it
   (`scan.sh --accept`) only after a successful pass.
 - It is about **change detection** — mechanical, content-hash based. A script can compute
   it; no judgment required.
@@ -98,15 +98,15 @@ cap *how much* you spend, and you *catch errors*.
 
 ### The loop
 
-1. **Map first** — `./scripts/ingest-new.sh --map --watch`. Cheap. Then **read
+1. **Map first** — `./scripts/ingest --map --watch`. Cheap. Then **read
    `.ingest/coverage.tsv`**: are the value tiers sane? Re-tier anything mis-ranked (it's a
    plain TSV) or add priorities to `notes.md` and re-map.
-2. **Read pass** — `./scripts/ingest-new.sh --watch`. Reads the high-value docs. Watch the
+2. **Read pass** — `./scripts/ingest --watch`. Reads the high-value docs. Watch the
    stream; **Ctrl-C if it goes wrong** — a cancelled run won't advance the baseline.
 3. **Review** — open the wiki. Check the new `analysis/` pages and the `[!review]` flags.
    Wrong fact? Add a correction to `notes.md`. Spot-check a few *un-flagged* confident
    claims against the cited originals (each page's `## Sources` links them).
-4. **Deepen in bounded passes** — `./scripts/ingest-new.sh --deepen --budget 5 --watch`.
+4. **Deepen in bounded passes** — `./scripts/ingest --deepen --budget 5 --watch`.
    Repeat. Each pass reads the next-most-valuable unread items. **Check `.ingest/cost.tsv`**
    between passes; stop when the marginal pages aren't worth the marginal dollars.
 

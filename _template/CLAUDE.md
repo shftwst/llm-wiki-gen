@@ -213,7 +213,7 @@ Ingestion is an **anytime, iterative-deepening** loop, not one giant read. Stop 
 pass and resume later; the wiki is usable throughout. The frontier is `.ingest/coverage.tsv`
 (**you own it**; the wrapper owns `manifest.tsv`).
 
-- **Pass 0 — map** (`ingest-new.sh --map`): cheap. Build the structural skeleton and
+- **Pass 0 — map** (`ingest --map`): cheap. Build the structural skeleton and
   enumerate the corpus into `coverage.tsv` with a value tier per item — **owner priorities
   from `notes.md` first, then a type heuristic** (financial / legal / contractual / policy =
   high; receipts / incidental = low). Nothing read in full yet; everything `unread`.
@@ -239,7 +239,7 @@ Full model, ledger ownership, and the human operator playbook: **`docs/deepening
    silently inconsistent with its sources.
 4. Bump `last_ingested` and `updated` on the source page; bump `updated` on every other
    page you touch, and `as_of` on any derived page you recompute. (The detection baseline
-   in `.ingest/manifest.tsv` is advanced by `scripts/ingest-new.sh`, never by hand.)
+   in `.ingest/manifest.tsv` is advanced by `scripts/ingest`, never by hand.)
 5. Append a `reingest` entry to `log.md` noting what changed and which derived pages it
    rippled into.
 
@@ -274,13 +274,13 @@ to ask. The machinery lives in `scripts/` and `.ingest/`:
   script, no LLM, no cost. It is also the drift check the Lint workflow calls.
 - **`.ingest/manifest.tsv`** — the authoritative detection baseline: one row per ingested
   source (`source_path · kind · fingerprint · last_ingested`). **Never edit it by hand,
-  and neither do you** — `scripts/ingest-new.sh` advances it after a successful ingest.
+  and neither do you** — `scripts/ingest` advances it after a successful ingest.
 - **`.ingest/pending.md`** — the regenerated queue of what scan found. Derived; safe to
   overwrite.
 - **`.ingest/coverage.tsv`** — the read frontier for progressive deepening: each document
   with a value tier and read status. **You own this one** — update it as you read. See
   *Progressive deepening*.
-- **`scripts/ingest-new.sh`** — runs `scan.sh`, and if anything is pending, ingests it,
+- **`scripts/ingest`** — runs `scan.sh`, and if anything is pending, ingests it,
   then advances the manifest and commits. Run it yourself, or schedule it (see
   `scripts/README.md`).
 
@@ -290,7 +290,7 @@ holds the **present** (current ingested version of each source), `pending.md` li
 
 ### Unattended ingest
 
-When `ingest-new.sh` runs headless (cron / launchd / `--auto`), there is no human to
+When `ingest` runs headless (cron / launchd / `--auto`), there is no human to
 discuss takeaways with. In that mode:
 
 - Skip the "discuss with the human" step of Ingest.

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# classify — estimate a sensitivity tier for each coverage item. No LLM, no cost.
+#
+#   ./scripts/classify            classify all coverage items, write .ingest/sensitivity.tsv
+#   ./scripts/classify --dry-run  print the classification; write nothing
+#
+# Deterministic: it matches keywords in each coverage item's path and notes and never reads
+# document contents (the "without reading the full document" case). Fail-safe: an item that
+# matches no keyword falls to a conservative floor (CLASSIFY_FLOOR, default business-sensitive)
+# so it is never under-classified.
+#
+# This is Phase 1 of the sensitivity-aware routing design (llm-wiki-kit docs/routing.md).
+# It only TAGS; nothing routes on the tag yet. Sensitivity lives in its own sidecar ledger
+# (not a coverage column) so it never collides with scan --refresh or the agent's row writes.
+
+set -eu
+KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COVERAGE="$KB_DIR/.ingest/coverage.tsv"
+SENS="$KB_DIR/.ingest/sensitivity.tsv"
+DATE="$(date +%F)"
+DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
+FLOOR="${CLASSIFY_FLOOR:-business-sensitive}"   # fail-safe default for unmatched items
+
+[ -f "$COVERAGE" ] || { echo "classify: no coverage.tsv — run ./scripts/ingest --map first."; exit 0; }
+
+HEADER=$'# sensitivity.tsv — estimated sensitivity per coverage item (script-owned; written by scripts/classify).\n# Columns: item\ttier\tbasis\tdate     tier: default | business-sensitive | personal-sensitive\n# Deterministic path/keyword heuristic, fail-safe. Phase 1 of docs/routing.md; nothing routes on it yet.'
+
+tier_for() {  # prints "tier<TAB>basis" for the lowercased text in $1
+  case " $1 " in
+    *t4*|*t5*|*payroll*|*" sin "*|*"social insurance"*|*passport*|*" hr "*|*employment*|*benefit*|*hsa*|*medical*|*salary*|*paystub*|*personal*)
+      printf 'personal-sensitive\tpersonal / HR / payroll keyword';;
+    *tax*|*financ*|*statement*|*bank*|*invoice*|*contract*|*agreement*|*client*|*legal*|*minute*|*resolution*|*cap-table*|*insurance*|*gst*|*hst*|*option*|*dividend*)
+      printf 'business-sensitive\tbusiness / financial / legal keyword';;
+    *)
+      printf '%s\tno keyword (fail-safe floor)' "$FLOOR";;
+  esac
+}
+
+tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+printf '%s\n' "$HEADER" > "$tmp"
+n=0; p=0; b=0; d=0
+while IFS= read -r row; do
+  case "$row" in ''|'#'*) continue;; esac
+  item="${row%%	*}"
+  res="$(tier_for "$(printf '%s' "$row" | tr 'A-Z' 'a-z')")"
+  tier="${res%%	*}"; basis="${res#*	}"
+  printf '%s\t%s\t%s\t%s\n' "$item" "$tier" "$basis" "$DATE" >> "$tmp"
+  n=$((n + 1))
+  case "$tier" in personal-sensitive) p=$((p+1));; business-sensitive) b=$((b+1));; *) d=$((d+1));; esac
+done < <(grep -v '^#' "$COVERAGE")
+
+if [ "$DRY" -eq 1 ]; then
+  printf 'classify: [dry-run] %d items → personal %d, business %d, default %d (floor=%s). Nothing written.\n' "$n" "$p" "$b" "$d" "$FLOOR"
+  grep -v '^#' "$tmp" | cut -f1-2 | sed 's/^/  /'
+  exit 0
+fi
+mv "$tmp" "$SENS"; trap - EXIT
+printf 'classify: %d items → personal-sensitive %d, business-sensitive %d, default %d (floor=%s) → %s\n' \
+  "$n" "$p" "$b" "$d" "$FLOOR" "${SENS#"$KB_DIR"/}"

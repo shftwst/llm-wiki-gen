@@ -1,7 +1,9 @@
 # Sensitivity-aware model routing (design)
 
-**Status: proposed, not implemented. Opt-in.** This captures the architecture before any
-code, so the decisions are recorded and the build can be staged.
+**Status: Phase 1 (deterministic classification) is built; routing is not. Opt-in.** This
+captures the architecture so the decisions are recorded and the build is staged. As of now
+`scripts/classify` tags coverage items and `stats` reports the breakdown; nothing routes on
+the tag yet.
 
 Most KBs will run every pass through one model and never touch this. It exists for KBs whose
 sources contain regulated or private material that cannot leave the machine.
@@ -103,7 +105,9 @@ sensitive, sharpens the QA risk-weighting, and is the prerequisite for routing. 
 no local-model dependency, since the deterministic stage carries most of the load and the
 optional model call is a single rating, not an agentic loop.
 
-A natural shape: a new `ingest --classify` pass, or a small `scripts/classify`.
+Built as `scripts/classify`: deterministic keyword matching over the coverage path and notes,
+fail-safe floor (`CLASSIFY_FLOOR`, default `business-sensitive`), writing the sidecar ledger
+`.ingest/sensitivity.tsv`. The small-model stage for ambiguous cases is a later refinement.
 
 ---
 
@@ -145,8 +149,10 @@ So the split is clean:
 
 - **Phase 0 (free, deterministic, already present).** `lint`'s PII and keyword scan already
   gives a fail-safe sensitivity signal with no model at all.
-- **Phase 1 (cheap, no local dependency).** The classification pass and the `sensitivity`
-  column in `coverage.tsv`. Useful standalone; unblocks routing.
+- **Phase 1 (cheap, no local dependency). Built.** `scripts/classify` tags each coverage
+  item into the `.ingest/sensitivity.tsv` sidecar; `stats` reports the breakdown. Useful
+  standalone; unblocks routing. The optional small-model stage for ambiguous items is still
+  to come.
 - **Phase 2 (needs a local runtime).** The routing config, model selection in
   `ingest`/`verify`, and the redaction escape hatch for sensitive-and-hard.
 
@@ -159,8 +165,10 @@ dependency.
 
 ## 9. Open decisions
 
-- **Tag location.** A new `sensitivity` column in `coverage.tsv` (recommended), keyed per
-  source document, distinct from per-page `privilege`.
+- **Tag location. Resolved (for now): a sidecar.** Phase 1 writes `.ingest/sensitivity.tsv`
+  keyed per coverage item, rather than a `coverage.tsv` column, so it never collides with
+  `scan --refresh` or the agent's row writes. A column could replace it later if a join
+  proves awkward.
 - **Classification granularity.** Per document, or per tight group as `coverage.tsv` already
   groups them.
 - **Local model and harness** for Phase 2, and how much agentic capability it needs.

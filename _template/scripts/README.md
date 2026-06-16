@@ -51,7 +51,24 @@ A read-only dashboard over the state ledgers and `wiki/`. No LLM, no cost.
 
 Reports: documents by read status and value tier, the remaining frontier, read-vs-not-read
 counts with not-read reasons (timed-out = unreadable this pass), wiki pages by type and
-privilege tier, open `[!review]` flags, and total cost broken down by pass mode and model.
+privilege tier, open `[!review]` flags, sensitivity counts, and total cost broken down by
+pass mode and model.
+
+## `classify`: estimate sensitivity
+
+Tags each coverage item with a sensitivity tier (`default | business-sensitive |
+personal-sensitive`) from path and keyword heuristics. No LLM, no cost, never reads document
+contents. Fail-safe: an unmatched item falls to a conservative floor (`CLASSIFY_FLOOR`,
+default `business-sensitive`). Writes `.ingest/sensitivity.tsv`.
+
+```sh
+./scripts/classify            # classify all coverage items
+./scripts/classify --dry-run  # print the classification; write nothing
+CLASSIFY_FLOOR=default ./scripts/classify   # change the fail-safe floor
+```
+
+This is Phase 1 of the sensitivity-aware routing design ([`docs/routing.md`] in the kit).
+It only tags; nothing routes on the tag yet. Run it after `--map` populates the frontier.
 
 ## `scan`: detect changes
 

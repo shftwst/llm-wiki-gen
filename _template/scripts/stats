@@ -13,6 +13,7 @@ KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COVERAGE="$KB_DIR/.ingest/coverage.tsv"
 MANIFEST="$KB_DIR/.ingest/manifest.tsv"
 QA="$KB_DIR/.ingest/qa.tsv"
+SENS="$KB_DIR/.ingest/sensitivity.tsv"
 COST="$KB_DIR/.ingest/cost.tsv"
 WIKI="$KB_DIR/wiki"
 RAW="$KB_DIR/raw"
@@ -81,6 +82,19 @@ if [ -d "$WIKI" ]; then
   printf '  open [!review]   %s flag(s) across %s page(s)\n' "$revn" "$rev"
 else
   printf '  (none yet)\n'
+fi
+
+# --- sensitivity (sidecar; Phase 1 of routing) -------------------------------
+printf '\nSENSITIVITY (.ingest/sensitivity.tsv)\n'; rule
+if have "$SENS"; then
+  awk -F'\t' '$1 ~ /^#/ || $1=="" {next}
+    {n++; t[$2]++}
+    END{
+      printf "  classified     %d items\n", n
+      printf "  personal-sensitive %d  business-sensitive %d  default %d\n", t["personal-sensitive"]+0, t["business-sensitive"]+0, t["default"]+0
+    }' "$SENS"
+else
+  printf '  (none yet — run ./scripts/classify)\n'
 fi
 
 # --- verification (qa.tsv) ---------------------------------------------------

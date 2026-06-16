@@ -36,8 +36,9 @@ Structural, style, and privacy checks over `wiki/`. No LLM, no cost.
 Checks: frontmatter completeness and valid enums (errors); missing `## Sources` and
 all-`not read` pages; dangling `[[links]]` and orphan pages; stale derived pages
 (`derived_from` page newer than `as_of`); style tells (banned vocabulary, curly quotes,
-em-dash overuse); privacy heuristics (SIN-shaped numbers, credential keywords). It is the
-cheap pre-check; the LLM Lint workflow and the verify pass go deeper.
+em-dash overuse); privacy heuristics (SIN-shaped numbers, credential keywords); and **docs
+style** (the same tells across `CLAUDE.md`, `README`, and `docs/`, since `STYLE.md` governs
+docs too). It is the cheap pre-check; the LLM Lint workflow and the verify pass go deeper.
 
 ## `stats`: ingestion summary
 

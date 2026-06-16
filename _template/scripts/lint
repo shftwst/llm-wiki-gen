@@ -93,6 +93,27 @@ sin="$(grep -rnoE '\b[0-9]{3}-[0-9]{3}-[0-9]{3}\b' "$WIKI" --include='*.md' 2>/d
 cred="$(grep -rinE 'social insurance|company key|corporation key|\brecovery code\b|\bpassword\b' "$WIKI" --include='*.md' 2>/dev/null | grep -vi 'not recorded' || true)"
 [ -n "$cred" ] && warn "privacy: credential/identifier keyword(s) present — review (grep for them)"
 
+# --- docs style (STYLE.md governs docs/READMEs too, not just wiki pages) -----
+# Excludes STYLE.md (it names the banned words), notes.md (owner-authored), and
+# docs/llm-wiki-pattern.md (external reference, kept verbatim).
+sect "docs style"
+DOC_LIST="$KB_DIR/CLAUDE.md $KB_DIR/README.md $KB_DIR/scripts/README.md $KB_DIR/inbox/README.md"
+for d in "$KB_DIR"/docs/*.md; do
+  [ -e "$d" ] || continue
+  case "$d" in */llm-wiki-pattern.md) continue;; esac
+  DOC_LIST="$DOC_LIST $d"
+done
+for d in $DOC_LIST; do
+  [ -f "$d" ] || continue
+  rel=${d#"$KB_DIR"/}
+  dem=$(grep -o '—' "$d" 2>/dev/null | wc -l | tr -d ' ')
+  [ "${dem:-0}" -gt 3 ] && warn "docs: $rel has $dem em-dashes (overuse — STYLE.md)"
+  dbv=$(grep -hoiwE 'crucial|robust|comprehensive|multifaceted|seamless|vibrant|boasts|nestled|testament|showcase[sd]?|delve|tapestry|renowned|groundbreaking|pivotal|underscore[sd]?' "$d" 2>/dev/null | wc -l | tr -d ' ')
+  [ "${dbv:-0}" -gt 0 ] && warn "docs: $rel has $dbv banned-vocabulary occurrence(s)"
+  dcq=$(grep -o '[“”‘’]' "$d" 2>/dev/null | wc -l | tr -d ' ')
+  [ "${dcq:-0}" -gt 0 ] && warn "docs: $rel has $dcq curly quote(s)"
+done
+
 # --- summary -----------------------------------------------------------------
 printf '\n══════ %d error(s), %d warning(s) ══════\n' "$ERR" "$WARN"
 [ "$ERR" -eq 0 ] || exit 1

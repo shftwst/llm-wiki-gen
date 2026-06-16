@@ -26,6 +26,7 @@ the `llm-wiki-kit` repo at `docs/llm-wiki-pattern.md`.
 ├── CLAUDE.md          # this schema
 ├── README.md          # human-facing intro + Obsidian setup
 ├── notes.md           # owner-authored facts & corrections (authoritative; cite as "per owner")
+├── STYLE.md           # writing-style guide — avoid AI-writing tells (followed on every page)
 ├── inbox/             # shareable staging; scripts/sweep MOVES drops into raw/
 ├── raw/               # sources (files, directories, symlinks) — protected, never shared
 ├── wiki/              # the wiki (Obsidian vault root) — you own everything here
@@ -78,6 +79,10 @@ files.
 
 ## Page conventions
 
+- **Writing style:** every page follows `STYLE.md` — concrete, sourced prose with none of
+  the AI-writing tells it bans (filler vocabulary like *crucial / robust / testament /
+  vibrant / showcase*, puffery, significance-padding, vague attribution, title-case
+  headings, curly quotes, em-dash overuse, emoji). Read it before writing.
 - **Filenames:** kebab-case, descriptive — `acme-corp.md`, `client-onboarding.md`.
 - **Links:** use `[[wikilinks]]` between wiki pages. Link liberally — a link to a page
   that doesn't exist yet marks a page worth creating.

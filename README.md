@@ -40,9 +40,9 @@ my-kb/
 ├── wiki/       # the LLM-owned wiki (Obsidian vault root)
 │   ├── index.md
 │   └── overview.md
-├── scripts/    # sweep (intake) + scan (detect) + ingest (sweep→detect→ingest)
-├── .ingest/    # detection state: manifest.tsv (baseline) + pending.md (queue) + cost.tsv
-└── log.md      # append-only ingest / re-ingest / query / lint record
+├── scripts/    # sweep · scan · ingest · lint (QA) · stats (dashboard) · new-kb
+├── .ingest/    # state: manifest · coverage (read frontier) · qa (verification) · cost · pending
+└── log.md      # append-only ingest / re-ingest / query / lint / qa record
 ```
 
 ## Protected store + shared intake
@@ -68,6 +68,16 @@ in full, and repeatable `--deepen` passes go further — an anytime, iterative-d
 you stop whenever you like. Each KB ships an operator guide,
 [`docs/deepening.md`](_template/docs/deepening.md), covering the deepening algorithm, the
 coverage-vs-manifest ledger ownership, and a guardrailed human playbook.
+
+## Trusting the wiki (QA)
+
+A KB is only useful if you can act on it. QA is defense-in-depth: `scripts/lint` runs free
+mechanical checks (citations, links, style, privacy); `scripts/ingest --verify` is an
+adversarial pass that re-reads cited sources to confirm or flag claims, writing a
+verification ledger (`.ingest/qa.tsv`); and `scripts/stats` reports coverage and
+`% verified`. Effort is risk-weighted — value × uncertainty × stakes — so the target is
+calibrated confidence per tier, not 100%. Full strategy and operator loop:
+[`docs/qa.md`](_template/docs/qa.md).
 
 ## The pattern in one paragraph
 

@@ -328,6 +328,9 @@ with specific numbers/dates; pages citing `not read` sources; pages already flag
 5. Append a `qa` entry to `log.md`. The goal is **calibrated confidence per tier**, not
    100% — sample first where value × uncertainty × stakes is highest.
 
+Full QA strategy (failure modes, the defense-in-depth layers, risk-weighting, and the human
+operator loop): **`docs/qa.md`**.
+
 ## Mechanical detection & ingest
 
 Detection of new/changed sources is automated so it never depends on someone remembering

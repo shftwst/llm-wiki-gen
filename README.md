@@ -79,6 +79,13 @@ verification ledger (`.ingest/qa.tsv`); and `scripts/stats` reports coverage and
 calibrated confidence per tier, not 100%. Full strategy and operator loop:
 [`docs/qa.md`](_template/docs/qa.md).
 
+## Design notes
+
+Forward-looking architecture that is not built yet lives under [`docs/`](docs/). Current:
+[`docs/routing.md`](docs/routing.md), an opt-in design for sensitivity-aware model routing
+(classify each source document, keep sensitive inputs on a local model, send only
+non-sensitive work to a frontier model) so regulated material need never leave the machine.
+
 ## The pattern in one paragraph
 
 Instead of RAG re-deriving knowledge on every query, the LLM **incrementally builds and

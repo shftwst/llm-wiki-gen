@@ -126,12 +126,15 @@ files.
 
 ### Sensitive information & privilege
 
-> **Hard rule — never record personal identity or account numbers.** A person's government
-> IDs (SIN / SSN, passport, driver's licence), date of birth, and full bank-account or card
-> numbers must **never** appear in the wiki — not even partially. Note that a document
-> *contains* them and cite the document, but never transcribe the value. (Business
-> registration identifiers — corporation number, business number, GST/HST number — are not
-> personal identity info and may be recorded.)
+> **Hard rule — never record secrets or personal identifiers.** Two classes must **never**
+> appear in the wiki, even partially: **(1) personal identifiers** — government IDs (SIN /
+> SSN, passport, driver's licence), date of birth, full bank-account or card numbers; and
+> **(2) credentials / access keys** — passwords, PINs, recovery codes, API keys, and
+> registry access keys (e.g. an Ontario *Company Key* or federal *Corporation Key*, which let
+> the holder file changes to the corporation). Note that a document *contains* them and cite
+> it, but never transcribe the value. The test is **identifier vs. credential**: a number
+> that merely *names* the entity (corporation number, business number, GST/HST number) is
+> fine; a number that *grants access* is not.
 
 Every page carries a **`privilege`** tier in frontmatter so privileged content can be
 categorised. *Not gated yet — purely a label* (access control may come later):

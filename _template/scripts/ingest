@@ -68,7 +68,7 @@ _render() { if [ "$WATCH" -eq 1 ] && command -v jq >/dev/null 2>&1; then jq -r "
 BUDGET_CLAUSE=""
 [ -n "$BUDGET" ] && BUDGET_CLAUSE=" Spend roughly \$$BUDGET this pass, then stop; the next run resumes the frontier."
 
-COMMON_TAIL='Skip the discussion step; treat notes.md as authoritative ("per owner"); mark uncertainty or contradictions with a "> [!review]" callout; and in the log.md entry note what you read in full vs deferred plus every [!review] raised. NEVER record personal identity or account numbers (SIN/SSN, date of birth, passport, full bank/card numbers) — note their presence and cite the document, never the value; set the privilege tier (default | business-sensitive | personal-sensitive) on every page. You OWN .ingest/coverage.tsv (the read frontier) and must keep it current; do NOT edit .ingest/manifest.tsv and do NOT git commit — the wrapper advances the manifest and commits.'
+COMMON_TAIL='Skip the discussion step; treat notes.md as authoritative ("per owner"); mark uncertainty or contradictions with a "> [!review]" callout; and in the log.md entry note what you read in full vs deferred plus every [!review] raised. NEVER record secrets or personal identifiers — neither personal IDs (SIN/SSN, date of birth, passport, full bank/card numbers) NOR credentials/access keys (passwords, recovery codes, API keys, registry Company/Corporation Keys) — note their presence and cite the document, never the value; set the privilege tier (default | business-sensitive | personal-sensitive) on every page. You OWN .ingest/coverage.tsv (the read frontier) and must keep it current; do NOT edit .ingest/manifest.tsv and do NOT git commit — the wrapper advances the manifest and commits.'
 
 case "$MODE" in
   map)

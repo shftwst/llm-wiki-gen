@@ -86,6 +86,27 @@ for f in $pages; do
   [ "${d:-0}" -gt 12 ] && warn "style: $rel has $d em-dashes (overuse)"
 done
 
+# --- no ingestion mechanics / provenance in prose (body only) ---------------
+# The page body is about its subject; how it was ingested, where the raw file lives, and
+# what it was derived from belong in `## Sources`, frontmatter, and coverage.tsv, not prose.
+# Source pages are exempt (the source itself is their subject). See STYLE.md §10.
+sect "prose hygiene"
+# A body mention of a source page's own slug is provenance ("drawn from [[shared-drive]]");
+# that belongs in ## Sources, so fold the source slugs into the pattern (KB-agnostic).
+srcre="$(for f in $pages; do [ "$(fm "$f" type)" = source ] && basename "$f" .md; done | paste -sd'|' - || true)"
+pat='read in full|not read|this pass|map pass|deferred to a later|first ingest|derived from|coverage row|[Ss]ource:'
+[ -n "$srcre" ] && pat="$pat|\\[\\[($srcre)([]|#])"
+for f in $pages; do
+  rel=${f#"$WIKI"/}; ty="$(fm "$f" type)"
+  case "$ty" in source|index) continue;; esac
+  body="$(awk 'NR==1&&/^---/{infm=1;next} infm&&/^---/{infm=0;next} infm{next} /^## Sources/{exit} {print}' "$f")"
+  hit="$(printf '%s\n' "$body" | grep -inE "$pat" || true)"
+  if [ -n "$hit" ]; then
+    ex="$(printf '%s' "$hit" | head -1 | sed 's/^[0-9]*://; s/^ *//' | cut -c1-58)"
+    warn "$rel: ingestion-mechanics/provenance in prose (STYLE.md §10): $ex"
+  fi
+done
+
 # --- privacy heuristics (report for human review; never fail) ---------------
 sect "privacy"
 sin="$(grep -rnoE '\b[0-9]{3}-[0-9]{3}-[0-9]{3}\b' "$WIKI" --include='*.md' 2>/dev/null || true)"

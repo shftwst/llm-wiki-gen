@@ -83,6 +83,12 @@ files.
   the AI-writing tells it bans (filler vocabulary, puffery, significance-padding, vague
   attribution, title-case headings, curly quotes, em-dash overuse, emoji). Read `STYLE.md`
   before writing for the specifics.
+- **Prose is about the subject, not the wiki.** A page body never mentions how content was
+  ingested (passes, read-state, "this ingest"), which raw folder or file it came from
+  ("Source: `X/` in [[shared-drive]]"), or what it was derived from ("derived from the
+  agreements"). That metadata lives in the `## Sources` section, the frontmatter, and
+  `coverage.tsv`. Source pages are the exception (the source is their subject). See
+  `STYLE.md` §10; `lint` flags it.
 - **Filenames:** kebab-case, descriptive, `acme-corp.md`, `client-onboarding.md`.
 - **Links:** use `[[wikilinks]]` between wiki pages. Link liberally, a link to a page
   that doesn't exist yet marks a page worth creating.

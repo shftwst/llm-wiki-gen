@@ -98,10 +98,38 @@ Write like a sharp internal analyst briefing a busy owner: concrete nouns, real 
 dates, short declarative sentences, the fact first. Specific beats impressive. If a
 sentence still reads fine after you delete every adjective, it was doing its job.
 
+## 10. Keep wiki-mechanics and provenance out of the prose
+
+The page body is about its **subject**, nothing else. The reader does not care how the page
+was built, where the raw file sits, or what it was synthesized from. None of that belongs in
+prose:
+
+- **Ingestion mechanics.** No "read in full this pass", "not read this pass", "map pass",
+  "deferred to a later pass", "the first ingest", "this ingest", "coverage row", "the
+  frontier". Read-state lives in `coverage.tsv`; what was read vs deferred goes in `log.md`.
+- **Provenance.** No "Source: `Finance/Tax/` in [[shared-drive]]", no "drawn from the
+  `Minute Book/` folder", no statement of which raw folder or file the content came from.
+  Provenance belongs in the `## Sources` section and the frontmatter, not the body.
+- **Derivation bookkeeping.** No "derived from the signed agreements", no "see X for the
+  rates derived from them". State the fact; link the related page in a natural sentence. The
+  `derived_from` frontmatter records the dependency.
+
+Cross-links are good: `[[client-rates]]` inside a sentence that reads naturally is exactly
+right. Just never frame a link as ingestion bookkeeping.
+
+Data-confidence caveats are different and stay: if a number is an estimate or unverified, say
+so as a fact about the data ("the 2024 distribution total is an estimate; the T5 is not yet on
+file"), not as a note about the read pass. Use a `> [!review]` callout for an internal QA flag,
+phrased as a fact about the data, not about how it was processed.
+
+**Source pages are the one exception:** a `type: source` page's subject *is* the source, so it
+describes what the source is and what it contains. Provenance there is the content.
+
 ## Self-check before saving a page
 
 - Any word from §1? Replace it.
 - Any sentence that says *why it matters* rather than *what it is*? Cut it.
 - Any claim without a named or cited source? Remove it or source it.
+- Any ingestion mechanics, raw-folder provenance, or "derived from" in the prose? Cut it (§10).
 - Headings sentence-case? Bold rare? Quotes straight? No emoji, no stray tokens?
 - Could a knowledgeable human have written this without an LLM? If not, rewrite it.

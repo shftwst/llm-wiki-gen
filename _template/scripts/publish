@@ -63,6 +63,15 @@ for f in $(find "$WIKI" -name '*.md' | sort); do
     s{\[([^\]]*)\]\(\.\.\/raw\/[^)]*\)}{$1}g;                                                   # de-link raw citations
   ' "$f" > "$dest"
 done
+# Quartz serves content/index.md at the site root; the wiki's index/overview were skipped,
+# so synthesize a minimal landing page for this role view (else "/" 404s).
+kbname="$(basename "$KB_DIR")"
+{
+  printf -- '---\ntitle: %s (%s view)\n---\n\n' "$kbname" "$ROLE"
+  printf '# %s\n\nThe **%s** view of this knowledge base. Browse with the explorer or search, or start from the pages below.\n\n## Pages\n\n' "$kbname" "$ROLE"
+  while IFS= read -r s; do [ -n "$s" ] && printf -- '- [[%s]]\n' "$s"; done < "$inc_file"
+} > "$OUT/index.md"
+
 printf '  staged → %s\n' "${OUT#"$KB_DIR"/}"
 
 QZ="${QUARTZ_DIR:-$KB_DIR/.publish/quartz}"

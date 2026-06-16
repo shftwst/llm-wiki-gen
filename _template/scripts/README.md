@@ -78,6 +78,7 @@ a row to make a view for any role.
 
 ```sh
 ./scripts/publish team             # stage team-cleared pages; build with Quartz if set up
+./scripts/publish team --serve     # build + live preview at http://localhost:8080
 ./scripts/publish client --dry-run # report what each role would include/exclude
 ./scripts/publish owner --stage    # stage filtered content only; do not build
 ```

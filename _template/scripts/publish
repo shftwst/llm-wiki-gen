@@ -2,6 +2,7 @@
 # publish — build a role-filtered, shareable view of the wiki (for Quartz or any site).
 #
 #   ./scripts/publish <role>            stage the role's allowed pages; build with Quartz if set up
+#   ./scripts/publish <role> --serve    build and serve a live local preview (localhost:8080)
 #   ./scripts/publish <role> --dry-run  report what would be included/excluded; write nothing
 #   ./scripts/publish <role> --stage    stage filtered content only; do not build
 #
@@ -18,7 +19,7 @@ KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WIKI="$KB_DIR/wiki"
 ROLES="$KB_DIR/.publish/roles.tsv"
 ROLE="${1:-}"; MODE=build
-case "${2:-}" in --dry-run) MODE=dry;; --stage) MODE=stage;; "") ;; *) echo "publish: unknown arg '$2'" >&2; exit 1;; esac
+case "${2:-}" in --dry-run) MODE=dry;; --stage) MODE=stage;; --serve) MODE=serve;; "") ;; *) echo "publish: unknown arg '$2'" >&2; exit 1;; esac
 
 list_roles() { grep -v '^#' "$ROLES" 2>/dev/null | cut -f1 | paste -sd' ' -; }
 [ -f "$ROLES" ] || { echo "publish: no .publish/roles.tsv" >&2; exit 1; }
@@ -85,4 +86,9 @@ if [ ! -f "$QZ/package.json" ]; then
 fi
 
 rm -rf "$QZ/content"; cp -R "$OUT" "$QZ/content"
-( cd "$QZ" && npx quartz build ) && printf 'publish[%s]: built → %s/public\n' "$ROLE" "$QZ"
+if [ "$MODE" = "serve" ]; then
+  printf 'publish[%s]: serving live preview at http://localhost:8080 (Ctrl-C to stop) ...\n' "$ROLE"
+  ( cd "$QZ" && npx quartz build --serve )
+else
+  ( cd "$QZ" && npx quartz build ) && printf 'publish[%s]: built → %s/public\n' "$ROLE" "$QZ"
+fi

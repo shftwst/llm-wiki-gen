@@ -58,12 +58,21 @@ elif .type=="result" then "✓ \(.subtype // "done")\(if .total_cost_usd then " 
 else empty end
 '
 
-PROMPT='Mechanical ingest run. Read .ingest/pending.md and follow this KB'"'"'s CLAUDE.md.
-For every source under New and Changed, run the Ingest or Re-ingest workflow; for Removed,
-reconcile the affected wiki pages. This is an UNATTENDED ingest: skip the discussion step,
-mark anything uncertain or contradictory with a "> [!review]" callout on the page, and
-summarize what you did plus every [!review] you raised in the log.md entry. Do NOT edit
-.ingest/manifest.tsv and do NOT git commit — the wrapper advances the manifest and commits.'
+PROMPT='Mechanical ingest run. Read notes.md (if present) and this KB'"'"'s CLAUDE.md, then
+.ingest/pending.md. For every source under New and Changed, run the Ingest or Re-ingest
+workflow; for Removed, reconcile the affected wiki pages.
+
+Go for DEPTH: read the substantive documents in FULL and extract what they say — do not
+summarize from folder/file names. Produce analysis/ pages that synthesize across documents
+(financials by period, subscriptions, assets, rates). Give every real entity its own page,
+including service providers. Cite sources on every page (a "## Sources" section, paths as
+../raw/... links, each tagged "read in full" or "not read"), and NEVER assert a fact you
+only inferred from structure.
+
+This is an UNATTENDED ingest: skip the discussion step; treat notes.md as authoritative
+("per owner"); mark anything uncertain or contradictory with a "> [!review]" callout; and
+in the log.md entry summarize what you read in full vs deferred plus every [!review] raised.
+Do NOT edit .ingest/manifest.tsv and do NOT git commit — the wrapper advances and commits.'
 
 # --- sweep inbox → raw (the protected store) ---------------------------------
 if [ "$SWEEP_ENABLED" -eq 1 ] && [ -x "$SWEEP" ]; then

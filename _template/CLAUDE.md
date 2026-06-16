@@ -25,6 +25,7 @@ the `llm-wiki-kit` repo at `docs/llm-wiki-pattern.md`.
 {{KB_NAME}}/
 ├── CLAUDE.md          # this schema
 ├── README.md          # human-facing intro + Obsidian setup
+├── notes.md           # owner-authored facts & corrections (authoritative; cite as "per owner")
 ├── inbox/             # shareable staging; scripts/sweep.sh MOVES drops into raw/
 ├── raw/               # sources (files, directories, symlinks) — protected, never shared
 ├── wiki/              # the wiki (Obsidian vault root) — you own everything here
@@ -139,6 +140,23 @@ Create subdirectories under `wiki/` (`sources/`, `entities/`, `concepts/`, `anal
 as content arrives. Don't pre-create empty ones — **let structure emerge from the
 sources.** Do not impose a taxonomy up front.
 
+### Citing sources
+
+The wiki is also a **finding-aid**: every claim should be traceable to the document it came
+from, and that document should be openable. So:
+
+- **End every content page with a `## Sources` section** listing the specific files it
+  draws on, as links relative to the KB through the `raw/` symlink:
+  `[<path under the source>](../raw/<source>/<path>)`. The visible text is the path (always
+  precise and copy-pasteable); the link opens the original where the tool supports it.
+- **Tag each source `read in full` or `not read`** (folder present / referenced by name but
+  not opened). This keeps coverage honest and surfaces gaps for re-ingest.
+- **Cite inline** where a specific figure or claim comes from a specific document, so a
+  reader can jump from a claim to its origin.
+- Paths are relative to the KB so they survive a move; only the `raw/` symlink target is
+  machine-specific. (Obsidian: links outside the `wiki/` vault may open in the system app
+  rather than in-pane — fine; the path is the durable part.)
+
 ## Navigation files
 
 **`wiki/index.md` — content catalog.** Every wiki page listed with a `[[link]]` and a
@@ -159,13 +177,34 @@ it grep-parseable: `grep "^## \[" log.md | tail -5`.
 
 ### Ingest (new source)
 
-1. Read the source in `raw/` (follow symlinks; for a directory, walk it).
-2. Discuss key takeaways with the human.
-3. Write a source page in `wiki/sources/` with provenance frontmatter.
-4. Create or update the entity and concept pages the source touches — a single source
-   may touch 10–15 pages.
+Go for **depth, not a folder tour.** A page that just lists which folders exist is a
+failure — read the documents and extract what they actually say.
+
+1. **Consult `notes.md` first** (if present) — the owner's authoritative facts and
+   corrections. Trust them over anything you would infer, and cite them as "per owner".
+2. **Map the source** in `raw/` (follow symlinks; for a directory, walk it). For a
+   directory source this map is the starting point, not the deliverable.
+3. **Read the substantive documents in full** — anything carrying extractable facts
+   (financial statements, tax returns, contracts, policies, agreements). Do **not**
+   summarize these from their filenames. Read high-volume folders (e.g. hundreds of
+   receipts) in batches to derive aggregates, not one page each.
+4. **Write pages with depth and citations:**
+   - a **source page** in `wiki/sources/` with provenance frontmatter;
+   - an **entity page for every real entity** the source names — *including service
+     providers* (accountant, brokers, payroll, banks). An important entity is never left
+     as a bare dangling link;
+   - **concept pages** for topics that span documents;
+   - **`analysis/` pages** that synthesize across documents — the highest-value output:
+     e.g. financials by period (from statements/returns), a subscriptions register and an
+     asset register (from expenses), client rates (from contracts). Carry `derived_from`
+     + `as_of`;
+   - end **every page** with a `## Sources` section (see *Citing sources*).
 5. Add new pages to `wiki/index.md`; refresh `wiki/overview.md` if the synthesis shifts.
-6. Append an `ingest` entry to `log.md`.
+6. Append an `ingest` entry to `log.md` — note what you read **in full** vs. **deferred**,
+   the pages created, and every `[!review]` flag raised.
+
+**Never assert a fact you only inferred from a folder or file name.** Read the document,
+or cite it as `not read`. Inference-from-structure is how confidently-wrong pages happen.
 
 ### Re-ingest (a source changed)
 
@@ -239,9 +278,12 @@ discuss takeaways with. In that mode:
 
 ## Principles
 
-- You own `wiki/`; the human owns `raw/` and the questions. **`raw/` is strictly
-  read-only to you — never create, edit, or delete anything there, including through
-  symlinks.**
+- You own `wiki/`; the human owns `raw/`, `inbox/`, `notes.md`, and the questions. **`raw/`
+  is strictly read-only to you — never create, edit, or delete anything there, including
+  through symlinks. `notes.md` is the owner's authoritative facts/corrections: read and
+  cite it ("per owner"), never rewrite it.**
+- Depth over breadth: read the documents and synthesize; never pad the wiki with pages that
+  only restate folder names.
 - Structure emerges from content — don't impose a taxonomy up front.
 - Keep pages small and single-purpose; split when one grows too broad.
 - Bookkeeping is your job: cross-references, freshness, consistency. Do it thoroughly.

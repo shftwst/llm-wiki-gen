@@ -86,6 +86,7 @@ files.
   ```yaml
   ---
   type: source | entity | concept | comparison | overview | index
+  privilege: default | business-sensitive | personal-sensitive
   tags: []
   created: YYYY-MM-DD
   updated: YYYY-MM-DD
@@ -122,6 +123,27 @@ files.
   as_of: YYYY-MM-DD                            # snapshot date of the underlying data
   ---
   ```
+
+### Sensitive information & privilege
+
+> **Hard rule — never record personal identity or account numbers.** A person's government
+> IDs (SIN / SSN, passport, driver's licence), date of birth, and full bank-account or card
+> numbers must **never** appear in the wiki — not even partially. Note that a document
+> *contains* them and cite the document, but never transcribe the value. (Business
+> registration identifiers — corporation number, business number, GST/HST number — are not
+> personal identity info and may be recorded.)
+
+Every page carries a **`privilege`** tier in frontmatter so privileged content can be
+categorised. *Not gated yet — purely a label* (access control may come later):
+
+- **`default`** — ordinary content; nothing confidential.
+- **`business-sensitive`** — derived from confidential business material: contracts, rates,
+  financial statements, tax filings, banking.
+- **`personal-sensitive`** — derived from documents holding personal information about an
+  individual: HR records, payroll (T4/T5), benefits, anything with personal identifiers.
+
+Set the tier as you write each page; when a page draws on several, use the **most**
+sensitive. Default to `default` only when nothing sensitive is involved.
 
 ### Page types
 

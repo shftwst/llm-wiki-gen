@@ -130,6 +130,16 @@ if [ "$rc" -ne 0 ]; then
   exit "$rc"
 fi
 
+# Guard against silent no-ops: a clean exit (incl. a *cancelled* run — Claude Code exits 0
+# on cancel) with no changes to wiki/ or log.md means nothing was actually ingested. Don't
+# advance the baseline on a lie — leave the source(s) pending so the next run retries.
+CHANGED="$(git -C "$KB_DIR" status --porcelain -- wiki log.md 2>/dev/null || true)"
+if [ -z "$CHANGED" ]; then
+  echo "ingest-new: the run produced NO changes to wiki/ or log.md — nothing was ingested." >&2
+  echo "ingest-new: baseline NOT advanced; source(s) stay pending. (Run cancelled, or raw/ content unreadable?)" >&2
+  exit 3
+fi
+
 echo "ingest-new: advancing manifest baseline + committing ..."
 "$SCAN" --accept >/dev/null
 ( cd "$KB_DIR" && git add -A && git commit -q -m "Mechanical ingest ($(date +%F))" ) \

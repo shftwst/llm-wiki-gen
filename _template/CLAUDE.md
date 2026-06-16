@@ -175,10 +175,11 @@ sources.** Do not impose a taxonomy up front.
 The wiki is also a **finding-aid**: every claim should be traceable to the document it came
 from, and that document should be openable. So:
 
-- **End every content page with a `## Sources` section** listing the specific files it
-  draws on, as links relative to the KB through the `raw/` symlink:
-  `[<path under the source>](../raw/<source>/<path>)`. The visible text is the path (always
-  precise and copy-pasteable); the link opens the original where the tool supports it.
+- **End every content page with a `## Sources` section.** One entry per source:
+  `- [<path under the source>](../raw/<source>/<path>) · <short note> · read in full|not read`.
+  Separate fields with a middle dot `·`, **not an em-dash** (em-dash overuse is an AI tell —
+  see `STYLE.md`). The visible link text is the path (precise and copy-pasteable); the link
+  opens the original where the tool supports it.
 - **Authoritative read-state lives in `.ingest/coverage.tsv`** — the deepening frontier you
   own — not parsed from wiki pages. A `## Sources` entry may note `read in full` / `not read`
   for the reader, but `coverage.tsv` is the source of truth; keep it current as you read.

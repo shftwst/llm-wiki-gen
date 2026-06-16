@@ -88,6 +88,8 @@ the company's tax compliance, serving as a testament to its commitment to accura
 
 - Cite only documents you actually read (`## Sources`, `../raw/...` links). Never invent a
   source, page number, DOI, or URL. Strip tracking parameters (`utm_*`) from any link.
+- In `## Sources`, separate fields with a middle dot `·`, not an em-dash:
+  `- [path](../raw/...) · note · read in full`.
 
 ## 9. The voice to aim for
 

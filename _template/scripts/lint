@@ -37,6 +37,8 @@ for f in $pages; do
   [ -z "$pv" ] || kb_tier_valid "$pv" || warn "$rel: unknown privilege '$pv' (not in .schema/privilege-tiers.tsv)"
   ty="$(fm "$f" type)"
   [ -z "$ty" ] || kb_type_valid "$ty" || warn "$rel: unknown type '$ty' (not in .schema/page-types.tsv)"
+  rv="$(fm "$f" relevance)"
+  case "${rv:-}" in ''|relevant|off-topic) ;; *) warn "$rel: unknown relevance '$rv' (use relevant | off-topic)";; esac
 done
 
 # --- content pages should have ## Sources; flag all-not-read pages ----------
@@ -62,6 +64,20 @@ for s in $slugs; do
   case "$s" in index|overview) continue;; esac
   cnt=$(grep -rlE "\[\[${s}[]|#]" "$WIKI" --include='*.md' 2>/dev/null | grep -vc "/${s}\.md" || true)
   [ "${cnt:-0}" -eq 0 ] && warn "orphan: ${s}.md has no inbound [[links]]"
+done
+
+# --- thin pages: very short content with no inbound links (possible noise) ---
+sect "thin pages"
+for f in $pages; do
+  rel=${f#"$WIKI"/}; ty="$(fm "$f" type)"
+  [ "$(kb_type_class "$ty")" = content ] || continue
+  [ "$(fm "$f" relevance)" = off-topic ] && continue   # already quarantined
+  base="$(basename "$f" .md)"
+  body="$(awk 'NR==1&&/^---/{infm=1;next} infm&&/^---/{infm=0;next} infm{next} /^## Sources/{exit} {print}' "$f")"
+  words=$(printf '%s' "$body" | wc -w | tr -d ' ')
+  inb=$(grep -rlE "\[\[${base}[]|#]" "$WIKI" --include='*.md' 2>/dev/null | grep -vc "/${base}\.md" || true)
+  [ "${words:-0}" -lt 25 ] && [ "${inb:-0}" -eq 0 ] \
+    && warn "thin: $rel ($words words, no inbound links) — possible noise; deepen, link, or quarantine (relevance: off-topic)"
 done
 
 # --- stale derived pages (derived_from page updated > this as_of) -----------

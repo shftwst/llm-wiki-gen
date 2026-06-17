@@ -25,6 +25,23 @@ Measure every source against this charter. A source that is junk, off-charter, o
 better home if it is misfiled) and leave it for the owner, rather than discarding it silently.
 `scan` drops obvious junk (see `.ingestignore`); your job is the judgment the script cannot make.
 
+## Relevance triage and quarantine
+
+The Charter is enforced in two places. **At intake (the map pass):** judge every source against
+the Charter and record a verdict in `.ingest/relevance.tsv` (`item · relevance · basis · date`;
+`relevance` is `relevant | off-charter | junk | misfiled | unsure`). Only `relevant` items are
+deep-read; the rest are **parked** (never read in full) and surfaced by `scan` under *Relevance
+review* in `pending.md` for the owner. A `misfiled` verdict names a better home; the owner moves
+the raw file at its origin and re-ingests it there. Default to `unsure` (parked, flagged) rather
+than guessing.
+
+**After reading:** if a document you read in full turns out to be off-charter, do not delete its
+page; **quarantine** it by setting `relevance: off-topic` in the page frontmatter. A quarantined
+page is excluded from `wiki/index.md`, `wiki/overview.md`, and every `publish` view, but stays in
+the repo (reversible and auditable). `lint` flags **thin** pages (very short, no inbound links) as
+quarantine or deepen candidates. Never discard a source or page silently: park, flag, and leave
+the decision to the owner.
+
 ## The three layers
 
 1. **`raw/`: sources.** The human's curated source material; your source of truth. You
@@ -140,6 +157,7 @@ files.
   ---
   type: source | entity | concept | comparison | overview | index
   privilege: default | business-sensitive | personal-sensitive
+  relevance: relevant | off-topic        # optional; off-topic quarantines the page
   tags: []
   created: YYYY-MM-DD
   updated: YYYY-MM-DD
@@ -307,11 +325,12 @@ pass and resume later; the wiki is usable throughout. The frontier is `.ingest/c
 - **Pass 0: map** (`ingest --map`): cheap. Build the structural skeleton and
   enumerate the corpus into `coverage.tsv` with a value tier per item, **owner priorities
   from `notes.md` first, then a type heuristic** (financial / legal / contractual / policy =
-  high; receipts / incidental = low). Nothing read in full yet; everything `unread`.
+  high; receipts / incidental = low). Also record a relevance verdict per item in `.ingest/relevance.tsv` against the Charter, and
+  park anything not `relevant`. Nothing read in full yet; everything `unread`.
 - **Pass 1: read** (default): read the **high-value** unread documents in full, extract
   facts, upgrade pages from inferred to cited, derive `analysis/` pages. Mark them `read`.
 - **Passes 2…n: deepen** (`--deepen`, repeatable): read the next highest-value `unread`
-  or `stale` item and upgrade. `--budget $N` caps a pass; `--fresh` re-reads stale before
+  or `stale` item that is `relevant` in `relevance.tsv` (skip parked items) and upgrade. `--budget $N` caps a pass; `--fresh` re-reads stale before
   new coverage; the next run resumes the frontier.
 
 Always pick the next work by value order, mark items `read` as you go, and converge toward
@@ -411,6 +430,9 @@ to ask. The machinery lives in `scripts/` and `.ingest/`:
   tier, read status (`unread|partial|read|stale`), and a fingerprint. You own the semantic
   columns; `scan --refresh` owns the fingerprint and flips `read→stale` when a doc changes.
   See *Progressive deepening*.
+- **`.ingest/relevance.tsv`**: the relevance verdict per source (you own it), written by the map
+  pass against the Charter (`item · relevance · basis · date`). Parked items (anything but
+  `relevant`) are not deep-read; `scan` surfaces those needing review in `pending.md`.
 - **`scripts/ingest`**: runs `scan`, and if anything is pending, ingests it,
   then advances the manifest and commits. Run it yourself, or schedule it (see
   `scripts/README.md`).

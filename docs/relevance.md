@@ -1,9 +1,16 @@
 # Relevance and noise tolerance (design)
 
-**Status: Phase 1 (deterministic) is built; Phases 2-3 are not. Opt-in.** This captures the
-architecture so the decisions are recorded. The goal is to make ingestion tolerant of irrelevant
-input (junk files, accidental drops, misfiled documents, off-topic material) without ever
-silently discarding something real.
+**Status: Phases 1-2 are built; Phase 3 is not. Opt-in.** This captures the architecture so the
+decisions are recorded. The goal is to make ingestion tolerant of irrelevant input (junk files,
+accidental drops, misfiled documents, off-topic material) without ever silently discarding
+something real.
+
+Phase 2 shipped: a per-source `relevance` verdict in the `.ingest/relevance.tsv` sidecar
+(`relevant | off-charter | junk | misfiled | unsure`), written by the map pass against the
+Charter; only `relevant` items are deep-read, and `scan` surfaces the parked ones under
+*Relevance review* in `pending.md`. Pages are quarantined with a `relevance: off-topic`
+frontmatter flag that `publish`, `index`, and `overview` exclude (reversible, keeps inbound
+links); `lint` flags thin pages and validates the flag; `stats` reports the breakdown.
 
 Phase 1 shipped: the **charter** (a scope/non-scope section in `AGENTS.md`); the
 **`.ingestignore`** junk filter honored by `scan` and `sweep`, skipped as whole sources and
@@ -188,9 +195,10 @@ triage that writes it, the quarantine convention, and the audit.
 - **Phase 1 (cheap, deterministic). Built.** The charter in `AGENTS.md`, `.ingestignore`
   honoured by `sweep`/`scan`, and dedup at scan. No LLM. Removes the obvious junk and gives
   relevance a reference.
-- **Phase 2 (cheap LLM).** The `relevance` signal in the ledger, map-pass triage that parks
-  off-charter/junk and routes `unsure` to `pending.md`, and the quarantine convention
-  (frontmatter flag plus publish/index exclusion) with the lint thin-page check.
+- **Phase 2 (cheap LLM). Built.** The `relevance` signal in the `.ingest/relevance.tsv` sidecar,
+  map-pass triage that parks off-charter/junk and surfaces `unsure` via `scan` in `pending.md`,
+  and the quarantine convention (a `relevance: off-topic` frontmatter flag that publish/index
+  exclude) with the lint thin-page check and the `stats` breakdown.
 - **Phase 3 (audit).** The relevance audit pass and the `notes.md` override semantics.
 
 All opt-in and fail-safe: with none of it, ingestion behaves as it does today.
@@ -199,12 +207,10 @@ All opt-in and fail-safe: with none of it, ingestion behaves as it does today.
 
 ## 10. Open decisions
 
-- **Signal location.** A `relevance` column in `coverage.tsv` versus a sidecar like
-  `sensitivity.tsv`. A column is simpler to read; a sidecar avoids collisions with
-  `scan --refresh` (sensitivity chose the sidecar for that reason).
-- **Quarantine mechanism.** A frontmatter flag (page stays in place, excluded by filters) versus
-  a `wiki/_quarantine/` move (clear separation, but breaks inbound links). The flag is less
-  disruptive; a move is more visible.
+- **Signal location. Resolved: a sidecar** (`.ingest/relevance.tsv`), so it never collides with
+  `scan --refresh`'s row rewrite, matching `sensitivity.tsv`.
+- **Quarantine mechanism. Resolved: a frontmatter flag** (`relevance: off-topic`), so the page
+  keeps its inbound links and is excluded by `publish`/`index`; no `wiki/_quarantine/` move.
 - **Auto-park threshold.** How confident the map pass must be to park without asking. Junk can
   auto-park; off-charter probably always routes to `pending.md` first.
 - **Charter drift.** The charter will evolve. A re-classification needs to re-evaluate parked

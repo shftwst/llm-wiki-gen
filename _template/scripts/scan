@@ -33,6 +33,7 @@ STATE_DIR="$KB_DIR/.ingest"
 MANIFEST="$STATE_DIR/manifest.tsv"
 PENDING="$STATE_DIR/pending.md"
 COVERAGE="$STATE_DIR/coverage.tsv"
+RELEVANCE="$STATE_DIR/relevance.tsv"
 DATE="$(date +%F)"
 
 MANIFEST_HEADER=$'# manifest.tsv — ingest baseline. Columns: source_path\tkind\tfingerprint\tlast_ingested\n# Managed by scripts/scan (--accept). Do not edit by hand.'
@@ -187,6 +188,16 @@ else
   done < <(cut -f2 "$SIG_FILE" | sort | uniq -d)
 fi
 
+# --- relevance review: items the map pass parked as off-charter/misfiled/unsure --------
+REVIEW=()
+if [ -f "$RELEVANCE" ]; then
+  while IFS=$'\t' read -r item rel basis _d; do
+    case "${rel:-}" in
+      off-charter|misfiled|unsure) REVIEW+=("$item — $rel${basis:+ ($basis)}");;
+    esac
+  done < <(grep -v '^#' "$RELEVANCE" 2>/dev/null || true)
+fi
+
 # --- accept: rewrite manifest to current state, then stop --------------------
 if [ "$MODE" = "accept" ]; then
   { printf '%s\n' "$MANIFEST_HEADER"
@@ -213,6 +224,8 @@ fi
   if [ "${#SKIP_EMPTY[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${SKIP_EMPTY[@]}"; do printf -- '- `%s`\n' "$x"; done; fi
   printf '\n## Possible duplicates — %s (%d)\n' "$DUP_KIND" "${#DUPES[@]}"
   if [ "${#DUPES[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${DUPES[@]}"; do printf -- '- %s\n' "$x"; done; fi
+  printf '\n## Relevance review — off-charter / misfiled / unsure (%d)\n' "${#REVIEW[@]}"
+  if [ "${#REVIEW[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${REVIEW[@]}"; do printf -- '- %s\n' "$x"; done; fi
 } > "$PENDING"
 
 PEND=$(( ${#NEW[@]} + ${#CHANGED[@]} + ${#REMOVED[@]} ))

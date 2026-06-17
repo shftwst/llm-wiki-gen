@@ -14,6 +14,7 @@ COVERAGE="$KB_DIR/.ingest/coverage.tsv"
 MANIFEST="$KB_DIR/.ingest/manifest.tsv"
 QA="$KB_DIR/.ingest/qa.tsv"
 SENS="$KB_DIR/.ingest/sensitivity.tsv"
+RELEVANCE="$KB_DIR/.ingest/relevance.tsv"
 COST="$KB_DIR/.ingest/cost.tsv"
 WIKI="$KB_DIR/wiki"
 RAW="$KB_DIR/raw"
@@ -80,6 +81,8 @@ if [ -d "$WIKI" ]; then
   rev=$(grep -rl '\[!review\]' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
   revn=$(grep -rho '\[!review\]' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
   printf '  open [!review]   %s flag(s) across %s page(s)\n' "$revn" "$rev"
+  qz=$(grep -rlE '^relevance: *off-topic' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
+  [ "${qz:-0}" -gt 0 ] && printf '  quarantined     %s page(s) (relevance: off-topic; excluded from index/publish)\n' "$qz"
 else
   printf '  (none yet)\n'
 fi
@@ -95,6 +98,22 @@ if have "$SENS"; then
     }' "$SENS"
 else
   printf '  (none yet — run ./scripts/classify)\n'
+fi
+
+# --- relevance (sidecar; Phase 2 of relevance) -------------------------------
+printf '\nRELEVANCE (.ingest/relevance.tsv)\n'; rule
+if have "$RELEVANCE"; then
+  awk -F'\t' '$1 ~ /^#/ || $1=="" {next}
+    {n++; t[$2]++}
+    END{
+      printf "  triaged        %d items\n", n
+      printf "  relevant %d  off-charter %d  junk %d  misfiled %d  unsure %d\n", \
+        t["relevant"]+0, t["off-charter"]+0, t["junk"]+0, t["misfiled"]+0, t["unsure"]+0
+      p=(t["off-charter"]+0)+(t["junk"]+0)+(t["misfiled"]+0)+(t["unsure"]+0)
+      if(p>0) printf "  %d parked (not deep-read); see pending.md Relevance review\n", p
+    }' "$RELEVANCE"
+else
+  printf '  (none yet — the map pass writes it; see docs/relevance.md)\n'
 fi
 
 # --- verification (qa.tsv) ---------------------------------------------------

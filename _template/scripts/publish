@@ -49,6 +49,7 @@ list_roles() { grep -v '^#' "$ROLES" 2>/dev/null | cut -f1 | paste -sd' ' -; }
 all_roles()  { grep -v '^#' "$ROLES" 2>/dev/null | cut -f1; }
 fm_priv() { awk -F': ' '/^privilege:/{print $2; exit}' "$1"; }
 fm_type() { awk -F': ' '/^type:/{print $2; exit}' "$1"; }
+fm_relev() { awk -F': ' '/^relevance:/{print $2; exit}' "$1"; }
 
 # kb_title: the human title of this KB, inferred by the ingest and read here (publish runs no
 # LLM). Resolution order: $KB_TITLE override, then the overview's frontmatter `title:`, then
@@ -91,10 +92,11 @@ stage_role() {
   allow_re="^($(printf '%s' "$allowed" | tr -d ' ' | tr ',' '|'))$"
 
   inc_file="$(mktemp)"; tiers_tmp="$(mktemp)"
-  incn=0; exc=0
+  incn=0; exc=0; qz=0
   for f in $(find "$WIKI" -name '*.md' | sort); do
     base="$(basename "$f" .md)"
     case "$(kb_type_class "$(fm_type "$f")")" in nav) continue;; esac   # catalogs/home; Quartz builds nav
+    [ "$(fm_relev "$f")" = off-topic ] && { qz=$((qz+1)); continue; }   # quarantined (off-charter) page
     pv="$(fm_priv "$f")"; pv="${pv:-$DEFAULT_TIER}"
     if printf '%s' "$pv" | grep -qE "$allow_re"; then
       printf '%s\n' "$base" >> "$inc_file"; incn=$((incn+1))
@@ -107,7 +109,7 @@ stage_role() {
   brk="$(for t in $(kb_tiers); do c="$(grep -cxF "$t" "$tiers_tmp" 2>/dev/null || true)"; printf ' %s=%s' "$t" "$c"; done)"
   rm -f "$tiers_tmp"
   printf 'publish[%s]: clearance = %s\n' "$role" "$allowed"
-  printf '  include %d ·%s · exclude %d above clearance\n' "$incn" "$brk" "$exc"
+  printf '  include %d ·%s · exclude %d above clearance%s\n' "$incn" "$brk" "$exc" "$([ "$qz" -gt 0 ] && printf ', %d quarantined' "$qz")"
   if [ "$MODE" = dry ]; then rm -f "$inc_file"; return 0; fi
 
   rm -rf "$out"; mkdir -p "$out"

@@ -1,6 +1,6 @@
 # coverage.tsv — read frontier for progressive deepening (AGENT + scan share it). TAB-separated.
 # One row per document or tight group. Columns:
-#   path        raw/-relative path the row covers (e.g. shared-drive/Finance/Tax/YE2023/T5) — used for freshness
+#   path        raw/-relative path the row covers (e.g. shared-drive/finance/2023/tax-summary) — used for freshness
 #   value       high | med | low   (owner priorities in notes.md first, then a type heuristic)
 #   status      unread | partial | read | stale
 #   pass        pass number it was last read in (0 = not yet)

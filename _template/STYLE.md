@@ -107,7 +107,7 @@ prose:
 - **Ingestion mechanics.** No "read in full this pass", "not read this pass", "map pass",
   "deferred to a later pass", "the first ingest", "this ingest", "coverage row", "the
   frontier". Read-state lives in `coverage.tsv`; what was read vs deferred goes in `log.md`.
-- **Provenance.** No "Source: `Finance/Tax/` in [[shared-drive]]", no "drawn from the
+- **Provenance.** No "Source: `finance/tax/` in [[shared-drive]]", no "drawn from the
   `Minute Book/` folder", no statement of which raw folder or file the content came from.
   Provenance belongs in the `## Sources` section and the frontmatter, not the body.
 - **Derivation bookkeeping.** No "derived from the signed agreements", no "see X for the

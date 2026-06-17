@@ -8,12 +8,15 @@
 # Share only inbox/; never share raw/ or the KB root.
 #
 # Routing (a move is a one-way commitment, so only confident cases move):
-#   - raw/   real, fully-present content (files and directories).
+#   - raw/   real, fully-present content. A SYMLINK is moved as a link: mv relocates the link
+#            itself, so its target stays at its origin and is never walked, read, or copied. A
+#            living-source symlink dropped in inbox/ therefore lands in raw/ still pointing at the
+#            same place (the intended living-source model), with zero risk to the origin.
 #   - junk/  non-empty names matching .ingestignore (system cruft, temp/lock files). Safe to move.
-#   - HELD    zero-byte files, and directories that contain zero-byte files, are LEFT IN PLACE and
-#             flagged. A zero-byte file may be a real document that has not finished downloading
-#             (an un-synced cloud placeholder); moving it can cancel the download and lose it. Wait
-#             for it to sync (then re-sweep) or delete it.
+#   - HELD   zero-byte files, and REAL directories (not symlinks) that contain zero-byte files, are
+#            LEFT IN PLACE and flagged. A zero-byte file may be a real document that has not
+#            finished downloading (an un-synced cloud placeholder); moving it can cancel the
+#            download and lose it. Wait for it to sync (then re-sweep) or delete it.
 #
 # CAUTION: only zero-byte un-synced files are detectable. A macOS dataless placeholder reports its
 # full size and cannot be detected here, and any mv from a synced inbox can disturb the sync
@@ -55,8 +58,12 @@ for item in "$INBOX"/*; do
   [ "$base" = "README.md" ] && continue
 
   reason="$(kb_skip_reason "$item" || true)"           # review (zero-byte file) | junk | ''
-  if [ "$reason" != review ] && [ -d "$item" ] && kb_dir_has_unsynced "$item"; then
-    reason=review                                      # directory mid-sync: do not move it
+  # A REAL directory (not a symlink) with un-synced files inside is risky to move: a
+  # cross-filesystem mv copies, hence reads, every file. A symlink is always safe to move — mv
+  # relocates the link, never walking or touching the target — so it is never held here, and its
+  # (possibly huge, possibly un-synced) target is never traversed.
+  if [ "$reason" != review ] && [ -d "$item" ] && [ ! -L "$item" ] && kb_dir_has_unsynced "$item"; then
+    reason=review                                      # real directory mid-sync: do not move it
   fi
 
   if [ "$reason" = review ]; then

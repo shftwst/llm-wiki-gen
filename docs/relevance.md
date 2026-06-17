@@ -5,11 +5,15 @@ architecture so the decisions are recorded. The goal is to make ingestion tolera
 input (junk files, accidental drops, misfiled documents, off-topic material) without ever
 silently discarding something real.
 
-Phase 1 shipped: the **charter** (a scope/non-scope section in `AGENTS.md`), the
-**`.ingestignore`** junk filter honored by `scan` and `sweep` (matched names plus zero-byte
-files, skipped as whole sources and inside directory sources), and **duplicate detection** in
-`scan` (size-signature candidates confirmed by a content hash, reported under *Possible
-duplicates* in `pending.md`).
+Phase 1 shipped: the **charter** (a scope/non-scope section in `AGENTS.md`); the
+**`.ingestignore`** junk filter honored by `scan` and `sweep`, skipped as whole sources and
+inside directory sources; and **duplicate detection** in `scan` (size-signature candidates
+reported under *Possible duplicates* in `pending.md`). `sweep` routes by confidence: a non-empty
+`.ingestignore` match goes to `junk/` (garbage), but a zero-byte file, or a directory containing
+one, is **left exactly where it is** and flagged, since it may be a real document still downloading,
+and moving an un-synced file can cancel the download and lose it. For the same reason `scan`
+reads no file contents by default (it only stats, so it never force-downloads a cloud
+placeholder); `scan --dedup` opts into reading contents to confirm same-size duplicates.
 
 Every KB accumulates noise. `inbox/` is a shared drop point, so people will drop the wrong
 thing: a duplicate, a system file, or a document that belongs to a different KB. The system
@@ -62,8 +66,11 @@ the non-scope explicitly is more useful than one that names only the scope.
 
 Not all noise is the same, and the handling differs:
 
-- **Junk / cruft** (system files, zero-byte files, temp files, exact duplicates).
-  High-confidence, detectable mechanically. Skip for free: no LLM, no page.
+- **Junk / cruft** (system files, temp and lock files, exact duplicates). High-confidence,
+  detectable mechanically by `.ingestignore`. Skip for free: no LLM, no page. Zero-byte files
+  are the ambiguous exception: a real document may not have finished downloading, so they are
+  left in place and flagged for review (moving a possibly-un-synced file could lose it) rather
+  than treated as junk.
 - **Off-charter but real** (a genuine document that does not fit the KB's scope). Needs judgment
   against the charter. Park and flag; never auto-delete.
 - **Misfiled** (a real document that belongs to a *different* KB). The fix is relocation, not

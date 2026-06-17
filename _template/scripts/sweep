@@ -1,76 +1,99 @@
 #!/usr/bin/env bash
-# sweep — move staged sources from inbox/ into raw/.
+# sweep — move staged sources from inbox/ into raw/, setting obvious junk aside and never
+# touching anything that might be mid-download.
 #
 # inbox/ is a SHAREABLE staging area: unprivileged contributors can drop files there.
-# This sweep MOVES each dropped item into raw/ (the protected store), so once curated a
+# This sweep MOVES each curated item into raw/ (the protected store), so once curated a
 # source leaves the shared area entirely — contributors can't read, alter, or delete it.
 # Share only inbox/; never share raw/ or the KB root.
 #
-#   ./scripts/sweep            move inbox/* into raw/ and commit (skips README.md)
-#   ./scripts/sweep --dry-run  show what would move; move nothing
+# Routing (a move is a one-way commitment, so only confident cases move):
+#   - raw/   real, fully-present content (files and directories).
+#   - junk/  non-empty names matching .ingestignore (system cruft, temp/lock files). Safe to move.
+#   - HELD    zero-byte files, and directories that contain zero-byte files, are LEFT IN PLACE and
+#             flagged. A zero-byte file may be a real document that has not finished downloading
+#             (an un-synced cloud placeholder); moving it can cancel the download and lose it. Wait
+#             for it to sync (then re-sweep) or delete it.
 #
-# On a name collision with an existing raw/ entry, the incoming item is renamed with a
-# timestamp suffix rather than overwriting — nothing in raw/ is ever clobbered.
+# CAUTION: only zero-byte un-synced files are detectable. A macOS dataless placeholder reports its
+# full size and cannot be detected here, and any mv from a synced inbox can disturb the sync
+# engine. Make sure inbox/ contents are fully downloaded before sweeping.
+#
+#   ./scripts/sweep            move ready sources inbox → raw/ (junk → junk/), commit, flag held
+#   ./scripts/sweep --dry-run  show what would happen; change nothing
+#
+# On a name collision the incoming item is renamed with a timestamp suffix; nothing is clobbered.
 
 set -euo pipefail
 
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
 
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-. "$KB_DIR/scripts/kblib.sh"   # .ingestignore junk filter (kb_skip)
+. "$KB_DIR/scripts/kblib.sh"   # kb_skip_reason / kb_dir_has_unsynced (.ingestignore + un-synced)
 INBOX="$KB_DIR/inbox"
 RAW="$KB_DIR/raw"
+JUNK="$KB_DIR/junk"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 [ -d "$INBOX" ] || { echo "sweep: no inbox/ at $INBOX — nothing to do."; exit 0; }
-mkdir -p "$RAW"
+mkdir -p "$RAW" "$JUNK"
 
-moved=0; skipped=0; names=()
+# safe_dest <destdir> <basename>: echo a path in destdir that does not clobber an existing entry.
+safe_dest() {
+  local d="$1" b="$2"
+  if [ -e "$d/$b" ]; then
+    if [ "${b%.*}" = "$b" ]; then echo "$d/${b}-$STAMP"; else echo "$d/${b%.*}-$STAMP.${b##*.}"; fi
+  else
+    echo "$d/$b"
+  fi
+}
+
+moved=0; junked=0; held=0; names=()
 shopt -s nullglob
 for item in "$INBOX"/*; do
   base="$(basename "$item")"
   [ "$base" = "README.md" ] && continue
-  if kb_skip "$item"; then
-    echo "sweep: skipped junk inbox/$base (.ingestignore or zero-byte); left in inbox"
-    skipped=$((skipped + 1)); continue
+
+  reason="$(kb_skip_reason "$item" || true)"           # review (zero-byte file) | junk | ''
+  if [ "$reason" != review ] && [ -d "$item" ] && kb_dir_has_unsynced "$item"; then
+    reason=review                                      # directory mid-sync: do not move it
   fi
-  if [ -e "$RAW/$base" ]; then
-    # never clobber an existing raw source; suffix the incoming one
-    if [ "${base%.*}" = "$base" ]; then newname="${base}-$STAMP"
-    else newname="${base%.*}-$STAMP.${base##*.}"; fi
-  else
-    newname="$base"
+
+  if [ "$reason" = review ]; then
+    echo "sweep: HELD inbox/$base — empty or possibly un-synced; left in place. Finish the download (then re-sweep) or delete it."
+    held=$((held + 1)); continue
   fi
-  if [ "$DRY" -eq 1 ]; then
-    echo "sweep: [dry-run] would move inbox/$base → raw/$newname"
-  else
-    mv "$item" "$RAW/$newname"
-    echo "sweep: moved inbox/$base → raw/$newname"
+  if [ "$reason" = junk ]; then
+    dest="$(safe_dest "$JUNK" "$base")"
+    if [ "$DRY" -eq 1 ]; then echo "sweep: [dry-run] inbox/$base → junk/$(basename "$dest") (.ingestignore)"
+    else mv "$item" "$dest"; echo "sweep: junk → junk/$(basename "$dest") (matched .ingestignore)"; fi
+    junked=$((junked + 1)); continue
   fi
-  names+=("$newname"); moved=$((moved + 1))
+
+  dest="$(safe_dest "$RAW" "$base")"
+  if [ "$DRY" -eq 1 ]; then echo "sweep: [dry-run] inbox/$base → raw/$(basename "$dest")"
+  else mv "$item" "$dest"; echo "sweep: moved inbox/$base → raw/$(basename "$dest")"; fi
+  names+=("$(basename "$dest")"); moved=$((moved + 1))
 done
 shopt -u nullglob
 
-if [ "$moved" -eq 0 ]; then
-  if [ "$skipped" -gt 0 ]; then echo "sweep: nothing moved ($skipped junk item(s) skipped, left in inbox)."
-  else echo "sweep: inbox empty — nothing to sweep."; fi
-  exit 0
-fi
+total=$((moved + junked + held))
+if [ "$total" -eq 0 ]; then echo "sweep: inbox empty — nothing to sweep."; exit 0; fi
 if [ "$DRY" -eq 1 ]; then
-  echo "sweep: [dry-run] $moved item(s) would move. Nothing changed."
+  echo "sweep: [dry-run] $moved → raw/, $junked → junk/, $held held in place. Nothing changed."
   exit 0
 fi
 
-# Commit the custody move so it's captured independently of any later ingest.
-if command -v git >/dev/null 2>&1 && git -C "$KB_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+# Commit the raw/ custody moves so they're captured independently of any later ingest.
+# junk/ is a gitignored holding pen, so only the raw/ additions are committed.
+if [ "$moved" -gt 0 ] && command -v git >/dev/null 2>&1 && git -C "$KB_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   body="$(printf 'raw/%s\n' "${names[@]}")"
   git -C "$KB_DIR" add -A -- raw inbox >/dev/null 2>&1 || true
   git -C "$KB_DIR" commit -q -m "Sweep: $moved source(s) inbox → raw" -m "$body" \
     >/dev/null 2>&1 || echo "sweep: (nothing committed)"
 fi
 
-if [ "$skipped" -gt 0 ]; then
-  echo "sweep: $moved item(s) moved into raw/; $skipped junk item(s) skipped (left in inbox)."
-else
-  echo "sweep: $moved item(s) moved into raw/."
-fi
+msg="sweep: $moved moved into raw/"
+[ "$junked" -gt 0 ] && msg="$msg; $junked set aside in junk/ (delete when ready)"
+[ "$held"   -gt 0 ] && msg="$msg; $held held in inbox/ (empty or un-synced — review)"
+echo "$msg."

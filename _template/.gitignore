@@ -16,3 +16,7 @@ inbox/*
 
 # publish build artifacts (per-role staged content + generated sites); roles.tsv stays tracked
 .publish/*/
+
+# junk/ is a sweep holding pen for garbage; keep the dir + README, ignore the contents
+junk/*
+!junk/README.md

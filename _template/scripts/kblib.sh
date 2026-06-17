@@ -45,10 +45,31 @@ EOF
   return 1
 }
 
-# kb_skip <fullpath>: exit 0 if this path should be skipped as a non-source: its name matches
-# .ingestignore, or it is a zero-byte regular file. Used by scan and sweep.
-kb_skip() {
-  kb_ignored "${1##*/}" && return 0
-  [ -f "$1" ] && [ ! -s "$1" ] && return 0
+# kb_skip_reason <fullpath>: print why this path should not be promoted as a source, else nothing.
+#   "review" — zero-byte regular file: ambiguous and possibly un-synced (a real download that has
+#              not arrived). Callers MUST NOT move it; moving can break the pending download.
+#              Leave it in place and flag it.
+#   "junk"   — non-empty name matching .ingestignore (system cruft, temp/lock files): safe to move.
+# Zero-byte wins over a junk-name match, so nothing zero-byte is ever moved. Symlinks are excluded
+# from the zero-byte test (mv on a symlink just moves the link; the target stays at its origin).
+kb_skip_reason() {
+  if [ -f "$1" ] && [ ! -L "$1" ] && [ ! -s "$1" ]; then printf 'review'; return 0; fi
+  kb_ignored "${1##*/}" && { printf 'junk'; return 0; }
+  return 1
+}
+
+# kb_skip <fullpath>: exit 0 if the path should not be promoted as-is (review or junk).
+kb_skip() { kb_skip_reason "$1" >/dev/null; }
+
+# kb_dir_has_unsynced <dir>: 0 if the directory holds a non-junk zero-byte file (a likely
+# un-synced or failed download). Used by sweep to avoid moving a directory mid-sync. NOTE: this
+# only catches truly empty files; a macOS dataless placeholder reports its full size and cannot
+# be detected here, so fully download a folder's contents before sweeping it.
+kb_dir_has_unsynced() {
+  [ -d "$1" ] || return 1
+  while IFS= read -r f; do
+    kb_ignored "${f##*/}" && continue
+    return 0
+  done < <(find -L "$1" -type f -size 0 2>/dev/null)
   return 1
 }

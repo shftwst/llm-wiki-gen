@@ -119,7 +119,7 @@ cred="$(grep -rinE 'social insurance|company key|corporation key|\brecovery code
 # Excludes STYLE.md (it names the banned words), notes.md (owner-authored), and
 # docs/llm-wiki-pattern.md (external reference, kept verbatim).
 sect "docs style"
-DOC_LIST="$KB_DIR/AGENTS.md $KB_DIR/CLAUDE.md $KB_DIR/README.md $KB_DIR/scripts/README.md $KB_DIR/inbox/README.md"
+DOC_LIST="$KB_DIR/AGENTS.md $KB_DIR/CLAUDE.md $KB_DIR/README.md $KB_DIR/scripts/README.md $KB_DIR/inbox/README.md $KB_DIR/junk/README.md"
 for d in "$KB_DIR"/docs/*.md; do
   [ -e "$d" ] || continue
   case "$d" in */llm-wiki-pattern.md) continue;; esac

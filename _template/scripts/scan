@@ -2,14 +2,16 @@
 # scan — detect new/changed/removed sources in raw/ vs the ingest manifest.
 #
 # Each top-level entry in raw/ is one source (file, directory, or symlink to a living
-# document). Fingerprints follow symlinks. The diff is against .ingest/manifest.tsv. Names in
-# .ingestignore and zero-byte files are skipped as junk (as whole sources, and inside directory
-# sources so junk does not affect a fingerprint); sources with identical content are flagged as
-# possible duplicates.
+# document). Fingerprints follow symlinks but only STAT files (size + mtime); contents are never
+# read by default, so a cloud placeholder is never forced to download. Names in .ingestignore are
+# skipped as junk; zero-byte files are flagged for review (possibly un-synced) and never read or
+# moved; inside directory sources junk is filtered from fingerprints. Same-size sources are
+# flagged as possible duplicates (confirmed by content only with --dedup).
 #
 #   ./scan            detect; write .ingest/pending.md; exit 0 = clean, 10 = pending
 #   ./scan --accept   advance the manifest baseline to current state (used post-ingest)
 #   ./scan --refresh  freshness check: fingerprint read coverage items, flag changed = stale
+#   ./scan --dedup    like detect, but read contents to confirm duplicates (may hydrate placeholders)
 #
 # No LLM, no network, no cost. Portable across macOS (bash 3.2 / BSD tools) and Linux.
 
@@ -17,10 +19,11 @@ set -euo pipefail
 
 die() { printf 'scan: error: %s\n' "$1" >&2; exit 1; }
 
-MODE="detect"
+MODE="detect"; DEDUP=0
 case "${1:-}" in
   --accept)  MODE="accept";;
   --refresh) MODE="refresh";;
+  --dedup)   DEDUP=1;;   # confirm duplicates by reading contents (may hydrate cloud placeholders)
 esac
 
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -117,13 +120,16 @@ if [ "$MODE" = "refresh" ]; then
 fi
 
 SEEN_FILE="$(mktemp)"; SIG_FILE="$(mktemp)"; trap 'rm -f "$SEEN_FILE" "$SIG_FILE"' EXIT
-NEW=(); CHANGED=(); NEWMAN=(); SKIPPED=()
+NEW=(); CHANGED=(); NEWMAN=(); SKIP_JUNK=(); SKIP_EMPTY=()
 
 shopt -s nullglob
 for src in "$RAW_DIR"/*; do
   base="$(basename "$src")"
   case "$base" in README.md|.*) continue;; esac
-  if kb_skip "$src"; then SKIPPED+=("raw/$base"); continue; fi   # .ingestignore / zero-byte
+  case "$(kb_skip_reason "$src" || true)" in           # set junk/empties aside, don't enumerate
+    junk)   SKIP_JUNK+=("raw/$base"); continue;;        # non-empty .ingestignore match
+    review) SKIP_EMPTY+=("raw/$base"); continue;;       # zero-byte (possibly an un-synced download)
+  esac
   rel="raw/$base"
   printf '%s\n' "$rel" >> "$SEEN_FILE"
   fp="$(fingerprint "$src")"
@@ -152,23 +158,34 @@ while IFS=$'\t' read -r path _k _f _l; do
   grep -qxF "$path" "$SEEN_FILE" || REMOVED+=("$path")
 done < "$MANIFEST"
 
-# --- duplicates: sources sharing a size signature, confirmed by content hash -----------
-# Size collisions are rare, so a content hash runs only for candidates that share a signature.
-DUPES=()
-while IFS= read -r sig; do
-  [ -n "$sig" ] || continue
-  ch_file="$(mktemp)"
-  while IFS= read -r rel; do
-    [ -n "$rel" ] || continue
-    printf '%s\t%s\n' "$(content_hash "$RAW_DIR/${rel#raw/}")" "$rel" >> "$ch_file"
-  done < <(awk -F'\t' -v s="$sig" '$2==s{print $1}' "$SIG_FILE")
-  while IFS= read -r h; do
-    [ -n "$h" ] || continue
-    grp="$(awk -F'\t' -v hh="$h" '$1==hh{print $2}' "$ch_file" | paste -sd'|' - | sed 's/|/ = /g')"
+# --- duplicates ------------------------------------------------------------------------
+# Default: report same-SIZE candidates only — no file contents are read, so an un-synced cloud
+# placeholder is never forced to download. `scan --dedup` reads contents to confirm exact matches
+# (and may hydrate placeholders). Size collisions are rare, so confirmation stays cheap.
+DUPES=(); DUP_KIND="same size, unconfirmed (run scan --dedup to verify by content)"
+if [ "$DEDUP" -eq 1 ]; then
+  DUP_KIND="content-confirmed"
+  while IFS= read -r sig; do
+    [ -n "$sig" ] || continue
+    ch_file="$(mktemp)"
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      printf '%s\t%s\n' "$(content_hash "$RAW_DIR/${rel#raw/}")" "$rel" >> "$ch_file"
+    done < <(awk -F'\t' -v s="$sig" '$2==s{print $1}' "$SIG_FILE")
+    while IFS= read -r h; do
+      [ -n "$h" ] || continue
+      grp="$(awk -F'\t' -v hh="$h" '$1==hh{print $2}' "$ch_file" | paste -sd'|' - | sed 's/|/ = /g')"
+      DUPES+=("$grp")
+    done < <(cut -f1 "$ch_file" | sort | uniq -d)
+    rm -f "$ch_file"
+  done < <(cut -f2 "$SIG_FILE" | sort | uniq -d)
+else
+  while IFS= read -r sig; do
+    [ -n "$sig" ] || continue
+    grp="$(awk -F'\t' -v s="$sig" '$2==s{print $1}' "$SIG_FILE" | paste -sd'|' - | sed 's/|/ ? /g')"
     DUPES+=("$grp")
-  done < <(cut -f1 "$ch_file" | sort | uniq -d)
-  rm -f "$ch_file"
-done < <(cut -f2 "$SIG_FILE" | sort | uniq -d)
+  done < <(cut -f2 "$SIG_FILE" | sort | uniq -d)
+fi
 
 # --- accept: rewrite manifest to current state, then stop --------------------
 if [ "$MODE" = "accept" ]; then
@@ -190,13 +207,15 @@ fi
   if [ "${#CHANGED[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${CHANGED[@]}"; do printf -- '- `%s`\n' "$x"; done; fi
   printf '\n## Removed (%d)\n' "${#REMOVED[@]}"
   if [ "${#REMOVED[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${REMOVED[@]}"; do printf -- '- `%s`\n' "$x"; done; fi
-  printf '\n## Skipped as junk (%d)\n' "${#SKIPPED[@]}"
-  if [ "${#SKIPPED[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${SKIPPED[@]}"; do printf -- '- `%s`\n' "$x"; done; fi
-  printf '\n## Possible duplicates (%d)\n' "${#DUPES[@]}"
+  printf '\n## Skipped as junk (%d)\n' "${#SKIP_JUNK[@]}"
+  if [ "${#SKIP_JUNK[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${SKIP_JUNK[@]}"; do printf -- '- `%s`\n' "$x"; done; fi
+  printf '\n## Empty, possibly un-synced — review (%d)\n' "${#SKIP_EMPTY[@]}"
+  if [ "${#SKIP_EMPTY[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${SKIP_EMPTY[@]}"; do printf -- '- `%s`\n' "$x"; done; fi
+  printf '\n## Possible duplicates — %s (%d)\n' "$DUP_KIND" "${#DUPES[@]}"
   if [ "${#DUPES[@]}" -eq 0 ]; then printf '_none_\n'; else for x in "${DUPES[@]}"; do printf -- '- %s\n' "$x"; done; fi
 } > "$PENDING"
 
 PEND=$(( ${#NEW[@]} + ${#CHANGED[@]} + ${#REMOVED[@]} ))
-printf 'scan: %d new, %d changed, %d removed, %d skipped, %d dup-group(s) → %s\n' \
-  "${#NEW[@]}" "${#CHANGED[@]}" "${#REMOVED[@]}" "${#SKIPPED[@]}" "${#DUPES[@]}" "${PENDING#"$KB_DIR"/}"
+printf 'scan: %d new, %d changed, %d removed, %d junk, %d empty/review, %d dup-group(s) → %s\n' \
+  "${#NEW[@]}" "${#CHANGED[@]}" "${#REMOVED[@]}" "${#SKIP_JUNK[@]}" "${#SKIP_EMPTY[@]}" "${#DUPES[@]}" "${PENDING#"$KB_DIR"/}"
 [ "$PEND" -eq 0 ] && exit 0 || exit 10

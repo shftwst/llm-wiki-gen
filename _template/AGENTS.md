@@ -48,6 +48,7 @@ better home if it is misfiled) and leave it for the owner, rather than discardin
 ├── .ingestignore      # names scan/sweep skip as junk (system cruft, temp files)
 ├── .schema/           # page-type + privilege-tier vocabularies (lint/classify/publish read these)
 ├── inbox/             # shareable staging; scripts/sweep MOVES drops into raw/
+├── junk/              # sweep holding pen: .ingestignore matches (gitignored)
 ├── raw/               # sources (files, directories, symlinks), protected, never shared
 ├── wiki/              # the wiki (Obsidian vault root), you own everything here
 │   ├── index.md       # content catalog of every wiki page
@@ -86,9 +87,7 @@ Support re-ingesting updates, see the **Re-ingest** workflow.
 `inbox/` is a **shareable staging area**, the one directory exposed to contributors.
 People drop files or folders into it; `scripts/sweep` then **moves** each item into
 `raw/`. Because the sweep *moves* (not copies), a curated source leaves the shared area
-entirely, so contributors can never read, alter, or delete the real `raw/` source. Items
-matching `.ingestignore` (or zero-byte files) are left in `inbox/` rather than moved, so junk
-never reaches the protected store.
+entirely, so contributors can never read, alter, or delete the real `raw/` source. Items `sweep` will not promote are handled by confidence. A non-empty `.ingestignore` match moves to `junk/` (garbage; delete). But a zero-byte file, or a directory containing one, is **left exactly where it is** and flagged: it may be a real document still downloading, and moving an un-synced file can cancel the download and lose it. Junk never reaches the protected store; once a held file finishes syncing, re-sweep it, or delete it if it is junk.
 
 - **Never share `raw/` or the KB root: share only `inbox/`** (e.g. point `inbox/` at a
   shared cloud folder, or share just that subdirectory).
@@ -379,9 +378,7 @@ to ask. The machinery lives in `scripts/` and `.ingest/`:
 - **`scripts/scan`**: walks `raw/`, fingerprints each source (following symlinks), and
   diffs against `.ingest/manifest.tsv` to classify **new / changed / removed**. Writes the
   queue to `.ingest/pending.md`; exits `10` if anything is pending, `0` if clean. Pure
-  script, no LLM, no cost. It is also the drift check the Lint workflow calls. Names matching
-  `.ingestignore` and zero-byte files are skipped as junk (listed under *Skipped* in
-  `pending.md`), and sources with identical content are flagged under *Possible duplicates*.
+  script, no LLM, no cost. It is also the drift check the Lint workflow calls. Names matching `.ingestignore` are skipped as junk and zero-byte files are flagged for review (a zero-byte file may be an un-synced download); both are listed in `pending.md`, and same-size sources are flagged under *Possible duplicates* (it only stats files, never reading contents, so a cloud placeholder is never force-downloaded; `--dedup` reads contents to confirm).
 - **`.ingest/manifest.tsv`**: the authoritative detection baseline: one row per ingested
   source (`source_path · kind · fingerprint · last_ingested`). **Never edit it by hand,
   and neither do you**, `scripts/ingest` advances it after a successful ingest.

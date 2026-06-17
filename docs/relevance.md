@@ -46,7 +46,7 @@ Example for the ops KB:
 > Out of scope: personal life unrelated to the company, unrelated side projects, and material
 > belonging to other entities.
 
-The charter lives in `CLAUDE.md` (it is schema) and is the yardstick the map pass and the
+The charter lives in `AGENTS.md` (it is schema) and is the yardstick the map pass and the
 relevance audit measure against. Without it, relevance triage is guessing. A charter that names
 the non-scope explicitly is more useful than one that names only the scope.
 
@@ -149,7 +149,7 @@ Most of the scaffolding exists:
 - **`notes.md`**: the owner's correction and override channel.
 - **`lint` (orphans)**: extends naturally to thin-page detection.
 - **`--verify` + `qa.tsv`**: the model for a relevance audit.
-- **`CLAUDE.md`**: the home for the charter.
+- **`AGENTS.md`**: the home for the charter.
 
 What is missing: the charter, the `.ingestignore`, the `relevance` signal and the map-pass
 triage that writes it, the quarantine convention, and the audit.
@@ -172,7 +172,7 @@ triage that writes it, the quarantine convention, and the audit.
 
 ## 9. Phased plan
 
-- **Phase 1 (cheap, deterministic).** The charter in `CLAUDE.md`, `.ingestignore` honoured by
+- **Phase 1 (cheap, deterministic).** The charter in `AGENTS.md`, `.ingestignore` honoured by
   `sweep`/`scan`, and dedup at scan. No LLM. Removes the obvious junk and gives relevance a
   reference.
 - **Phase 2 (cheap LLM).** The `relevance` signal in the ledger, map-pass triage that parks

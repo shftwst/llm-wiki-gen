@@ -82,7 +82,7 @@ cat <<EOF
 
 Next steps:
   cd "$TARGET"
-  # open in Claude Code (CLAUDE.md loads automatically)
+  # open in Claude Code (CLAUDE.md points at AGENTS.md); other agents read AGENTS.md
   # open wiki/ as an Obsidian vault
   # add sources to raw/ (files, folders, or: ln -s <living-source> raw/<name>)
   # then ask the agent to ingest them

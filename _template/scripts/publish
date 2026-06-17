@@ -20,7 +20,7 @@
 #
 # The site title (Quartz's header, and the landing page) is the KB's own title, read from the
 # overview's `title:`/H1 (which the ingest infers from the sources), falling back to the
-# CLAUDE.md H1 then the folder name. Override per build with KB_TITLE=...
+# AGENTS.md H1 then the folder name. Override per build with KB_TITLE=...
 #
 # One Quartz instance serves one role at a time, so --all writes each role to its own static
 # output dir (.publish/sites/<role>/) you can open directly or host; preview one live with
@@ -52,7 +52,7 @@ fm_type() { awk -F': ' '/^type:/{print $2; exit}' "$1"; }
 
 # kb_title: the human title of this KB, inferred by the ingest and read here (publish runs no
 # LLM). Resolution order: $KB_TITLE override, then the overview's frontmatter `title:`, then
-# its first H1, then the CLAUDE.md H1 (minus the schema suffix), then the folder name.
+# its first H1, then the AGENTS.md H1 (minus the schema suffix), then the folder name.
 kb_title() {
   [ -n "${KB_TITLE:-}" ] && { printf '%s' "$KB_TITLE"; return; }
   ov="$WIKI/overview.md"
@@ -61,8 +61,8 @@ kb_title() {
     [ -n "$t" ] || t="$(grep -m1 '^# ' "$ov" | sed 's/^# *//')"
     [ -n "$t" ] && { printf '%s' "$t"; return; }
   fi
-  if [ -f "$KB_DIR/CLAUDE.md" ]; then
-    t="$(grep -m1 '^# ' "$KB_DIR/CLAUDE.md" | sed 's/^# *//; s/: Knowledge Base Schema.*//')"
+  if [ -f "$KB_DIR/AGENTS.md" ]; then
+    t="$(grep -m1 '^# ' "$KB_DIR/AGENTS.md" | sed 's/^# *//; s/: Knowledge Base Schema.*//')"
     [ -n "$t" ] && { printf '%s' "$t"; return; }
   fi
   basename "$KB_DIR"

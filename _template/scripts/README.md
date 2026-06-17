@@ -51,7 +51,7 @@ Checks: frontmatter completeness and valid enums (errors); missing `## Sources` 
 all-`not read` pages; dangling `[[links]]` and orphan pages; stale derived pages
 (`derived_from` page newer than `as_of`); style tells (banned vocabulary, curly quotes,
 em-dash overuse); privacy heuristics (SIN-shaped numbers, credential keywords); and **docs
-style** (the same tells across `CLAUDE.md`, `README`, and `docs/`, since `STYLE.md` governs
+style** (the same tells across `AGENTS.md`, `CLAUDE.md`, `README`, and `docs/`, since `STYLE.md` governs
 docs too). It is the cheap pre-check; the LLM Lint workflow and the verify pass go deeper.
 
 ## `stats`: ingestion summary
@@ -110,7 +110,7 @@ output dir (`.publish/sites/<role>/`) you can open or host; preview one live wit
 
 The site title (Quartz's header and the landing page) is the KB's own title, read from the
 `wiki/overview.md` `title:`/H1 the ingest infers from the sources, falling back to the
-`CLAUDE.md` H1 then the folder name. Override per build with `KB_TITLE="My KB" ./scripts/publish team`.
+`AGENTS.md` H1 then the folder name. Override per build with `KB_TITLE="My KB" ./scripts/publish team`.
 
 [Quartz](https://quartz.jzhao.xyz/) is an Obsidian-aware static site generator: it understands
 `[[wikilinks]]` and callouts, unlike plain GitHub. If it is not present, `publish` installs it

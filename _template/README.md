@@ -9,12 +9,12 @@ sources and writes the wiki; you curate sources and ask questions.
   these.
 - `wiki/`, the wiki the LLM writes and maintains. **Open this folder as your Obsidian
   vault.**
-- `CLAUDE.md`, the schema the LLM follows. Co-evolve it as you learn what works.
+- `AGENTS.md`, the schema the LLM follows (vendor-neutral, so local/other models can use it too). `CLAUDE.md` is a thin pointer to it. Co-evolve it as you learn what works.
 - `log.md`, chronological record of every ingest / re-ingest / query / lint.
 
 ## Using it
 
-1. Open this folder in Claude Code (the `CLAUDE.md` loads automatically).
+1. Open this folder in Claude Code (`CLAUDE.md` loads automatically and points at `AGENTS.md`). Other agents read `AGENTS.md` directly.
 2. Open `wiki/` as an Obsidian vault to browse the result.
 3. Add a source, drop a file or folder into `raw/`, or symlink a living document:
    ```sh

@@ -33,7 +33,8 @@ Pick a different location with a third argument:
 
 ```
 my-kb/
-├── CLAUDE.md   # the schema the LLM follows (page conventions + workflows)
+├── AGENTS.md   # the schema the LLM follows (page conventions + workflows)
+│   ├── CLAUDE.md   # thin pointer to AGENTS.md (Claude Code auto-loads it)
 ├── README.md   # human intro + Obsidian setup
 ├── inbox/      # shareable intake; sweep moves drops into raw/ (raw/ stays private)
 ├── raw/        # sources: files, directories, or symlinks to living docs
@@ -105,7 +106,7 @@ them, and the agent can **re-ingest** updates when they change.
 ## Customizing the template
 
 Edit `_template/` to change what new KBs look like, especially
-[`_template/CLAUDE.md`](_template/CLAUDE.md), which encodes the page conventions and the
+[`_template/AGENTS.md`](_template/AGENTS.md), which encodes the page conventions and the
 ingest / re-ingest / query / lint workflows. Placeholders `{{KB_NAME}}`, `{{KB_TITLE}}`,
 `{{DATE}}`, and `{{YEAR}}` are substituted at generation time.
 

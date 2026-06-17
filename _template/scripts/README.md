@@ -13,7 +13,7 @@ script (no LLM, no cost); the actual ingest invokes Claude Code headlessly.
 ## Schema config (`.schema/`)
 
 Two TSVs define this KB's vocabularies; edit them to fit your domain (the scripts read them
-through `scripts/kblib.sh`, falling back to the shipped defaults if a file is absent):
+through `scripts/kblib.sh`):
 
 - **`.schema/page-types.tsv`** — the `type:` values (`type · class · dir · note`). `class` is
   `content` (needs `## Sources`, prose is subject-only, carries a privilege tier), `source`

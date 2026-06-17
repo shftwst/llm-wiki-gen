@@ -12,7 +12,7 @@
 # build stops there with instructions instead of installing Quartz.
 #
 # Roles and the privilege tiers each may see are defined in .publish/roles.tsv; the tier and
-# page-type vocabularies live in .kb/ (read via scripts/kblib.sh). Pages above a role's
+# page-type vocabularies live in .schema/ (read via scripts/kblib.sh). Pages above a role's
 # clearance are excluded; links to excluded pages and all ../raw/ citation links are de-linked
 # so the published site has no broken links and no paths into private sources. Pages whose type
 # class is `nav` (index, overview) are skipped; a minimal role-view index.md is generated so the
@@ -31,7 +31,7 @@
 
 set -eu
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-. "$KB_DIR/scripts/kblib.sh"   # page-type + privilege-tier vocabularies (.kb/)
+. "$KB_DIR/scripts/kblib.sh"   # page-type + privilege-tier vocabularies (.schema/)
 WIKI="$KB_DIR/wiki"
 ROLES="$KB_DIR/.publish/roles.tsv"
 QZ="${QUARTZ_DIR:-$KB_DIR/.publish/quartz}"

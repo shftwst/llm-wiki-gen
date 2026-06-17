@@ -10,7 +10,7 @@
 
 set -eu   # no pipefail: `grep ... | wc` deliberately tolerates no-match
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-. "$KB_DIR/scripts/kblib.sh"   # page-type + privilege-tier vocabularies (.kb/)
+. "$KB_DIR/scripts/kblib.sh"   # page-type + privilege-tier vocabularies (.schema/)
 WIKI="$KB_DIR/wiki"
 QUIET=0; [ "${1:-}" = "--quiet" ] && QUIET=1
 [ -d "$WIKI" ] || { echo "lint: no wiki/ yet."; exit 0; }
@@ -34,9 +34,9 @@ for f in $pages; do
     grep -qE "^$k:" "$f" || err "$rel: missing frontmatter '$k:'"
   done
   pv="$(fm "$f" privilege)"
-  [ -z "$pv" ] || kb_tier_valid "$pv" || warn "$rel: unknown privilege '$pv' (not in .kb/privilege-tiers.tsv)"
+  [ -z "$pv" ] || kb_tier_valid "$pv" || warn "$rel: unknown privilege '$pv' (not in .schema/privilege-tiers.tsv)"
   ty="$(fm "$f" type)"
-  [ -z "$ty" ] || kb_type_valid "$ty" || warn "$rel: unknown type '$ty' (not in .kb/page-types.tsv)"
+  [ -z "$ty" ] || kb_type_valid "$ty" || warn "$rel: unknown type '$ty' (not in .schema/page-types.tsv)"
 done
 
 # --- content pages should have ## Sources; flag all-not-read pages ----------

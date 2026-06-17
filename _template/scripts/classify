@@ -9,7 +9,7 @@
 # matches no keyword falls to a conservative floor (CLASSIFY_FLOOR) so it is never
 # under-classified.
 #
-# Tier names come from .kb/privilege-tiers.tsv: the keyword buckets map to whichever tiers are
+# Tier names come from .schema/privilege-tiers.tsv: the keyword buckets map to whichever tiers are
 # marked `personal` / `business` there, and the floor defaults to the `business` bucket. So a
 # KB can rename or re-rank its tiers without editing this script. The keyword lists below are
 # the domain heuristic; tune them per KB as needed.
@@ -20,7 +20,7 @@
 
 set -eu
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-. "$KB_DIR/scripts/kblib.sh"   # privilege-tier vocabulary (.kb/privilege-tiers.tsv)
+. "$KB_DIR/scripts/kblib.sh"   # privilege-tier vocabulary (.schema/privilege-tiers.tsv)
 COVERAGE="$KB_DIR/.ingest/coverage.tsv"
 SENS="$KB_DIR/.ingest/sensitivity.tsv"
 DATE="$(date +%F)"

@@ -1,7 +1,7 @@
 # roles.tsv — publish roles and the privilege tiers each may see (comma-separated). TAB-separated.
 # `scripts/publish <role>` stages the wiki pages whose `privilege` is in the role's list,
 # de-links anything pointing outside that set, and (if Quartz is set up) builds a site.
-# Tiers: defined in ../.kb/privilege-tiers.tsv (default | business-sensitive | personal-sensitive by default).
+# Tiers: defined in ../.schema/privilege-tiers.tsv (default | business-sensitive | personal-sensitive by default).
 # Add or edit rows to make a view for any role.
 client	default
 team	default,business-sensitive

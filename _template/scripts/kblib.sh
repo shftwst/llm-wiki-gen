@@ -1,12 +1,12 @@
-# kblib.sh — shared readers for this KB's schema config in .kb/ (page-types.tsv,
+# kblib.sh — shared readers for this KB's schema config in .schema/ (page-types.tsv,
 # privilege-tiers.tsv). Sourced by lint, classify, and publish. If a config file is missing,
 # the shipped defaults below are used, so a KB scaffolded before these files existed still
 # works. The caller must set KB_DIR before sourcing this file.
 #
 # No bash 4 features (associative arrays): everything is awk/cut over the TSVs, bash 3.2 safe.
 
-_KB_TYPES_TSV="$KB_DIR/.kb/page-types.tsv"
-_KB_TIERS_TSV="$KB_DIR/.kb/privilege-tiers.tsv"
+_KB_TYPES_TSV="$KB_DIR/.schema/page-types.tsv"
+_KB_TIERS_TSV="$KB_DIR/.schema/privilege-tiers.tsv"
 
 # Shipped defaults (printf interprets \t and \n, so this file needs no literal tabs).
 _kb_default_types() { printf 'source\tsource\nentity\tcontent\nconcept\tcontent\ncomparison\tcontent\nanalysis\tcontent\noverview\tnav\nindex\tnav\n'; }

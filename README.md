@@ -112,4 +112,4 @@ ingest / re-ingest / query / lint workflows. Placeholders `{{KB_NAME}}`, `{{KB_T
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+Apache 2.0, see [LICENSE](LICENSE).

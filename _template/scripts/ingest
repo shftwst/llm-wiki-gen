@@ -58,6 +58,8 @@ done
 
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 MODEL="${CLAUDE_MODEL:-claude-opus-4-8}"
+# Both modes auto-accept file writes; raw/ stays protected regardless by the guard-raw PreToolUse
+# hook (.claude/settings.json), which blocks any edit/delete/move/chmod under raw/ even under bypass.
 if [ "$AUTO" -eq 1 ]; then PERM=(--permission-mode bypassPermissions); else PERM=(--permission-mode acceptEdits); fi
 
 HAVE_JQ=0; command -v jq >/dev/null 2>&1 && HAVE_JQ=1

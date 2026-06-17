@@ -81,6 +81,11 @@ Support re-ingesting updates, see the **Re-ingest** workflow.
 > writing *through* a symlink to a living source. The human owns `raw/` entirely. When a
 > source needs to change, that happens at its origin; your job is to re-ingest the change,
 > never to make it.
+>
+> **Enforced mechanically, not just by this rule:** a PreToolUse hook (`scripts/guard-raw`, via
+> `.claude/settings.json`) blocks any edit, delete, move, create, or permission change under
+> `raw/`, and through its symlink targets, even under `--auto` / `bypassPermissions`. Reads
+> (including a read that hydrates a cloud placeholder) are allowed.
 
 ### Intake & sharing (`inbox/`)
 

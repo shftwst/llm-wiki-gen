@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# guard-raw — PreToolUse hook entry point (registered in .claude/settings.json). Runs the python
+# guard. If python3 is unavailable it fails CLOSED (blocks), so protection is never silently off.
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$(cd "$(dirname "$0")" && pwd)/guard-raw.py"
+fi
+echo "guard-raw: python3 not found — blocking raw-mutating tools to stay safe (install python3)." >&2
+exit 2

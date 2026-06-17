@@ -24,6 +24,26 @@ through `scripts/kblib.sh`):
   buckets to the tiers marked `business` / `personal`; `.publish/roles.tsv` grants each role a
   subset of these tiers.
 
+## `guard-raw`: protect `raw/` from edits (PreToolUse hook)
+
+`raw/` is read-only to the agent. `AGENTS.md` says so; `scripts/guard-raw` makes it a lock.
+Registered as a Claude Code **PreToolUse hook** in `.claude/settings.json`, it blocks any tool
+action that would edit, delete, move, create, or change permissions under `raw/`, including
+writes that resolve through a `raw/` symlink into the living source, and `Bash` commands such as
+`rm` / `mv` / `chmod` or redirects into `raw/`. Reads pass (including a read that hydrates a cloud
+placeholder). The hook exits `2` to block, so it holds even under `--permission-mode acceptEdits`
+and `bypassPermissions` (that is, `ingest --auto`). It needs `python3` and fails closed if absent.
+
+Verify it on your machine (should print a BLOCK message and exit 2):
+
+```sh
+echo '{"tool_name":"Write","tool_input":{"file_path":"raw/x"},"cwd":"'"$PWD"'"}' \
+  | CLAUDE_PROJECT_DIR="$PWD" ./scripts/guard-raw; echo "exit $?"
+```
+
+The hook is the in-tool guard. For a hard OS-level guarantee, mount the living source read-only,
+or run ingest as a user without write access to `raw/` and its symlink targets.
+
 ## `sweep`: move shared intake into the protected store
 
 `inbox/` is a shareable staging directory; `raw/` is the protected source store you never

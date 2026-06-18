@@ -25,7 +25,7 @@ job, not yours. (Based on Andrej Karpathy's **LLM Wiki** pattern,
         │   scan + ingest: the AI reads what is new and writes it up
         ▼
    ┌──────────┐
-   │  wiki/   │   tidy linked notes you can ask questions of
+   │  wiki/   │   tidy linked notes; ask it (scripts/query) and good answers file back
    └────┬─────┘
         │   publish (optional): a read-only site, filtered per audience
         ▼
@@ -105,7 +105,8 @@ ln -s "/Volumes/Shared/Acme" raw/acme            # or link a living folder strai
 ./scripts/ingest              # read the important documents in full
 ./scripts/ingest --deepen     # keep going, as deep as you want; stop any time
 
-# 4. read wiki/ directly, or publish a site (see below)
+# 4. ask it questions, or publish a site (see below)
+./scripts/query "what rate did we agree with the supplier?"  # answer from the wiki; good answers file back
 ```
 
 Each base is self-contained, so you can have one per client and move or hand off a whole folder

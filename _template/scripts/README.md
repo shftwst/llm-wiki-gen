@@ -234,6 +234,25 @@ owner-authored: the agent reads and cites it but never rewrites or deletes it (t
 equivalent of `notes.md`), and `lint` exempts it from the agent-discipline checks (citations,
 prose hygiene, thin-page). `stats` counts them.
 
+## `query`: ask the wiki, and learn from the asking
+
+`scripts/query "<question>"` answers from the wiki via headless Claude Code and, when the answer
+is durable (a synthesis across pages, not a one-fact lookup), files it back as a cited
+`analysis` page so the work compounds. It is the read-side twin of `ingest`; the file-back logic
+lives in the Query workflow in `AGENTS.md`, so an interactive session behaves the same.
+
+```sh
+./scripts/query "how does the cash-for-equity arrangement net out?"
+./scripts/query --watch "..."     # live play-by-play
+./scripts/query --auto  "..."     # unattended permissions (cron)
+./scripts/query --dry-run "..."   # show what would run; no LLM, no cost
+```
+
+Auto-filed pages carry `origin: query` and `verified: false` with a `> [!review]` note; they are
+usable at once and the nightly `ingest --verify` pass confirms them or flags specific claims.
+A lookup or an unanswerable question files nothing. Cost is appended to `.ingest/cost.tsv` under
+mode `query`. See `../docs/learning.md` for the design.
+
 ## Opt-in auto-ingest
 
 Enable this once you trust the supervised flow. Both options run `ingest --auto` on

@@ -13,6 +13,13 @@ them into a tidy set of linked notes, and keeps it current as you add more. The 
 job, not yours. (Based on Andrej Karpathy's **LLM Wiki** pattern,
 [`docs/llm-wiki-pattern.md`](docs/llm-wiki-pattern.md).)
 
+```
+   inbox/  ──sweep──▶   raw/   ──scan + ingest──▶   wiki/   ──publish──▶   website
+  you drop here       locked, never edited        the linked notes       filtered per role
+  (one shared box)    (your safe originals)       (what you ask)         (read-only, optional)
+                      └────────── the AI does this middle part on its own ──────────┘
+```
+
 ## Nothing new to learn
 
 Most of these systems die because they ask everyone to tag and tidy, and people quietly stop.
@@ -31,9 +38,6 @@ blocked from editing, moving, or deleting them. The AI can't either, even when i
 its own overnight. Point it at a shared drive someone else keeps tidy and it reads through to
 the originals without touching them, picking up edits whenever they happen. No "the computer
 reorganised my files" disaster waiting to go off.
-
-(For whoever sets it up: a Claude Code hook, `scripts/guard-raw`, enforces this on the `raw/`
-folder; sources can be plain files or symlinks to living documents.)
 
 ## Answers you can actually trust
 
@@ -57,7 +61,7 @@ faster and sharper.
 
 It only does paid work when something actually changed; an ordinary day with nothing new costs
 nothing. It looks for new files itself and gets on with it, no babysitting. Run it by hand or
-leave it on a schedule (`scripts/ingest --auto`).
+leave it on a schedule.
 
 ## The right people see the right things
 
@@ -65,23 +69,91 @@ You decide who sees what. Sensitive material (anything with personal or financia
 stay on a computer in your own office and never be sent anywhere. And you can hand someone a
 plain read-only website of the knowledge, filtered to their level: a client sees only
 client-safe pages, your staff see more, you see everything, with private bits and any path back
-to the original files stripped out. (`scripts/publish <role>`, with sensitivity tagging from
-`scripts/classify`.)
+to the original files stripped out.
 
-## Setting one up
+---
 
-Each knowledge base is a self-contained folder, and its own git repo. Create one with:
+The rest is for whoever sets this up.
+
+## Quickstart
 
 ```sh
-./scripts/new-kb my-kb "My Knowledge Base Title"              # creates ../my-kb/
-./scripts/new-kb my-kb "My KB Title" /path/to/parent-dir     # or elsewhere
+# 1. create a knowledge base (its own folder, and its own git repo)
+./scripts/new-kb acme-ops "Acme Operations"     # creates ../acme-ops/
+cd ../acme-ops
+
+# 2. feed it documents
+cp ~/Documents/*.pdf inbox/                       # the normal way: drop files into inbox/
+ln -s "/Volumes/Shared/Acme" raw/acme            # or link a living folder straight into raw/
+
+# 3. read them (ingest sweeps inbox/ into raw/ first, then reads)
+./scripts/ingest --map        # cheap first look: lists everything, ranks it by importance
+./scripts/ingest              # read the important documents in full
+./scripts/ingest --deepen     # keep going, as deep as you want; stop any time
+
+# 4. read wiki/ directly, or publish a site (see below)
 ```
 
-Inside it's plain files: `wiki/` (the notes), `raw/` (your documents), `inbox/` (the drop
-folder), `.schema/` (page types and privacy levels), and a running `log.md`. The AI's full
-instructions live in `AGENTS.md`, the writing rules in `STYLE.md`. Edit `_template/` to change
-what new bases look like. Every script, in detail:
-[`_template/scripts/README.md`](_template/scripts/README.md).
+Each base is self-contained, so you can have one per client and move or hand off a whole folder
+without it breaking. `new-kb <name> "<Title>" [parent-dir]` takes a kebab-case folder name, an
+optional title, and an optional location.
+
+## Customising
+
+Sensible defaults ship in `_template/`; edit a generated base directly, or edit the template to
+change every future one. The knobs, and why you'd turn them:
+
+- **Charter (do this first).** In `AGENTS.md`, write two or three sentences on what this base
+  covers and what it does not. It is the yardstick the AI measures every document against, so an
+  off-topic file gets parked instead of polluting the wiki. Leave it blank and "off-topic" has
+  no meaning, everything looks relevant.
+- **Priorities and corrections.** `notes.md` is the owner's channel: list what matters most (it
+  gets read first) and correct anything the AI got wrong (the correction sticks across re-runs).
+- **Page types (`.schema/page-types.tsv`).** The kinds of page this domain has. Each has a
+  `class`: `content` (a page about a subject, e.g. a client or a policy), `source` (a page
+  describing one ingested document), or `nav` (index and home pages). Add types that fit your
+  world; `lint` checks every page against this list.
+- **Privacy levels (`.schema/privilege-tiers.tsv`).** The sensitivity ladder, least to most
+  private (the default ships `default` < `business-sensitive` < `personal-sensitive`). This is
+  what sensitivity tagging sorts documents into and what publish roles are granted. Rename or
+  re-rank tiers and the scripts follow; nothing is hard-coded to the shipped names.
+- **Who sees what (`.publish/roles.tsv`).** One row per audience: a role name and the privacy
+  levels it may see. Add a row to create a new filtered view.
+- **Junk filter (`.ingestignore`).** gitignore-style globs the scan skips outright (system
+  files, temp files). Edit to match the cruft your sources collect.
+
+Placeholders (`{{KB_NAME}}`, `{{KB_TITLE}}`, `{{DATE}}`, `{{YEAR}}`) are filled in when a base
+is created, so template edits stay generic.
+
+## Publishing a wiki site
+
+`scripts/publish` turns the wiki into a read-only website, filtered to one role's clearance:
+
+```sh
+./scripts/publish team --serve     # build the team view and serve it at http://localhost:8080
+./scripts/publish client           # build the client view as static files
+./scripts/publish --all            # build a separate site for every role in roles.tsv
+./scripts/publish team --dry-run   # show what a role would include and exclude; build nothing
+```
+
+Pages above the role's level are dropped, and links to them, plus any path back to the raw
+files, are removed, so a shared site has no leaks and no dead links. The first run installs the
+site builder itself (it needs `git` and `npm`); after that it is just `publish`. The site title
+comes from the base's own title; override per build with `KB_TITLE="..." ./scripts/publish team`.
+
+## What's in a knowledge base
+
+Plain files, nothing exotic:
+
+- `wiki/` the notes the AI writes and links (open and read directly)
+- `raw/` your source documents (read-only; files or symlinks to living folders)
+- `inbox/` the shared drop folder; `sweep` moves drops into `raw/`
+- `.schema/` your page types and privacy levels
+- `.publish/` publish roles, and a disposable site-builder checkout
+- `.ingest/` bookkeeping: what's been read, what's covered, what each run cost
+- `AGENTS.md` the AI's full instructions · `STYLE.md` the writing rules · `log.md` a running record
+
+Every script and flag, in detail: [`_template/scripts/README.md`](_template/scripts/README.md).
 
 ## License
 

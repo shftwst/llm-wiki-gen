@@ -85,6 +85,14 @@ if [ -d "$WIKI" ]; then
   [ "${qz:-0}" -gt 0 ] && printf '  quarantined     %s page(s) (relevance: off-topic; excluded from index/publish)\n' "$qz"
   hm=$(grep -rlE '^maintained_by: *human' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
   [ "${hm:-0}" -gt 0 ] && printf '  human-maintained %s page(s) (owner-authored; agent never rewrites them)\n' "$hm"
+  oq=$(grep -rlE '^origin: *query' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${oq:-0}" -gt 0 ]; then
+    oqv=0; oqu=0
+    for qf in $(grep -rlE '^origin: *query' "$WIKI" --include='*.md' 2>/dev/null); do
+      if grep -qE '^verified: *[0-9]' "$qf"; then oqv=$((oqv+1)); else oqu=$((oqu+1)); fi
+    done
+    printf '  query-filed     %s page(s) (origin: query; %s verified, %s unverified)\n' "$oq" "$oqv" "$oqu"
+  fi
 else
   printf '  (none yet)\n'
 fi

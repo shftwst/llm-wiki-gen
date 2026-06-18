@@ -14,7 +14,7 @@
 # KB can rename or re-rank its tiers without editing this script. The keyword lists below are
 # the domain heuristic; tune them per KB as needed.
 #
-# This is Phase 1 of the sensitivity-aware routing design (llm-wiki-kit docs/routing.md).
+# This is Phase 1 of the sensitivity-aware routing design (llm-wiki-gen docs/routing.md).
 # It only TAGS; nothing routes on the tag yet. Sensitivity lives in its own sidecar ledger
 # (not a coverage column) so it never collides with scan --refresh or the agent's row writes.
 

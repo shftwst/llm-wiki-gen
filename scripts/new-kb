@@ -68,7 +68,7 @@ done
 if command -v git >/dev/null 2>&1; then
   git -C "$TARGET" init -q
   git -C "$TARGET" add -A
-  if ! git -C "$TARGET" commit -q -m "Scaffold $KB_TITLE knowledge base from llm-wiki-kit"; then
+  if ! git -C "$TARGET" commit -q -m "Scaffold $KB_TITLE knowledge base from llm-wiki-gen"; then
     echo "note: nothing committed — configure git user.name/email, then commit manually."
   fi
 else

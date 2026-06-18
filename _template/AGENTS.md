@@ -6,7 +6,7 @@ read sources, write and update pages, and keep everything consistent. The human 
 sources and asks questions, you do the bookkeeping.
 
 This KB follows the **LLM Wiki** pattern (Andrej Karpathy). The full write-up lives in
-the `llm-wiki-kit` repo at `docs/llm-wiki-pattern.md`.
+the `llm-wiki-gen` repo at `docs/llm-wiki-pattern.md`.
 
 ## Charter (what this KB covers)
 

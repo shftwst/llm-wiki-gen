@@ -7,4 +7,4 @@ Grep the timeline: `grep "^## \[" log.md | tail -5`
 
 ## [{{DATE}}] init | knowledge base created
 
-- Scaffolded from llm-wiki-kit. Empty wiki ready for first ingest.
+- Scaffolded from llm-wiki-gen. Empty wiki ready for first ingest.

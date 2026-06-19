@@ -1,6 +1,7 @@
 # Learning from use (design)
 
-**Status: Not built. Design only, opt-in.** This records the architecture so the decisions are
+**Status: Phase 1 (file-back) and Phase 2a (prominence) are built; query-driven depth (Phase 2b)
+and smarter dedup (Phase 3) are design only.** This records the architecture so the decisions are
 on file. The goal is the "self-improving" and "usage-shaped" half of the second-brain framing:
 the wiki should get better the more it is queried, without a human curating every step, and
 without the auto-curation quietly degrading the wiki it is meant to improve.

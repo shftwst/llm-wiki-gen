@@ -1,0 +1,2 @@
+# queries.tsv — per-query page-hit log (appended by the agent on every answered query).
+# Columns: date	page   (page = the wiki slug the answer drew on; identifiers only, no query text)

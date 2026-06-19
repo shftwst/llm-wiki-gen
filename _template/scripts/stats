@@ -16,6 +16,7 @@ QA="$KB_DIR/.ingest/qa.tsv"
 SENS="$KB_DIR/.ingest/sensitivity.tsv"
 RELEVANCE="$KB_DIR/.ingest/relevance.tsv"
 COST="$KB_DIR/.ingest/cost.tsv"
+QUERIES="$KB_DIR/.ingest/queries.tsv"
 WIKI="$KB_DIR/wiki"
 RAW="$KB_DIR/raw"
 CHECK=0; [ "${1:-}" = "--check" ] && CHECK=1
@@ -141,6 +142,23 @@ if have "$QA"; then
     }' "$QA"
 else
   printf '  (none yet — run ./scripts/ingest --verify)\n'
+fi
+
+# --- queries (prominence signal) --------------------------------------------
+printf '\nMOST QUERIED (.ingest/queries.tsv)\n'; rule
+if have "$QUERIES"; then
+  awk -F'\t' '$1 ~ /^#/ || $1=="" {next}
+    {n++; c[$2]++; if($1>last[$2]) last[$2]=$1}
+    END{ np=0; for(p in c) np++
+         printf "  logged         %d page-hit(s) across %d page(s)\n", n, np }' "$QUERIES"
+  printf '  most queried:\n'
+  awk -F'\t' '$1 ~ /^#/ || $1=="" {next}
+    {c[$2]++; if($1>last[$2]) last[$2]=$1}
+    END{ for(p in c) printf "%d\t%s\t%s\n", c[p], p, last[p] }' "$QUERIES" \
+    | sort -rn | head -10 \
+    | awk -F'\t' '{printf "    %4d  %-28s (last asked %s)\n", $1, $2, $3}'
+else
+  printf '  (none yet — answered queries log page hits here)\n'
 fi
 
 # --- cost --------------------------------------------------------------------

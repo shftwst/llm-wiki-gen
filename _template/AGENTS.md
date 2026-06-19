@@ -274,7 +274,12 @@ from, and that document should be openable. So:
 
 **`wiki/index.md`: content catalog.** Every wiki page listed with a `[[link]]` and a
 one-line summary, grouped by category. Update it on every ingest/re-ingest. When
-answering a query, read the index first to find relevant pages, then drill in.
+answering a query, read the index first to find relevant pages, then drill in. Order pages
+within each category by how often they are asked about (the per-page hit count in
+`.ingest/queries.tsv`, most-asked first; ties keep their existing order). On `wiki/overview.md`,
+keep a short **Most asked about** section listing the top few pages by that count, so the home
+page leads with what people actually use. Prominence is a soft signal on top of the catalog, not
+a reordering of the underlying pages or their privilege.
 
 **`log.md`: chronological, append-only.** One entry per operation. Format:
 
@@ -392,6 +397,10 @@ For each stale document:
 6. When you filed or updated a page, append a `query` entry to `log.md` naming what was
    created or merged and any `> [!review]` raised. A lookup or an unanswered question writes no
    page and no log entry.
+7. For **every** answered query (durable, lookup, or partial), append one `date<TAB>page` row to
+   `.ingest/queries.tsv` for each wiki page the answer drew on, page slugs only, never the
+   question text. This is the usage signal that shapes prominence, so it runs even when nothing
+   is filed. An unanswerable question (no pages used) appends nothing.
 
 ### Lint (health check)
 

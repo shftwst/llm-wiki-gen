@@ -1,2 +1,2 @@
 # demand.tsv — sources a query needed but had not read yet (appended by the agent on a miss).
-# Columns: date	source	note   (source = coverage.tsv path; note = short topic only, no question text)
+# Columns: at	source	note   (at = ISO 8601 UTC timestamp from scripts/now; source = coverage.tsv path; note = short topic only, no question text)

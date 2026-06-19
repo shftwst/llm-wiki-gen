@@ -29,7 +29,7 @@ Append-only. Three TAB columns:
 
 ```
 # demand.tsv — sources a query needed but had not read yet (appended by the agent on a miss).
-# Columns: date	source	note   (source = coverage.tsv path; note = short topic only, no question text)
+# Columns: at	source	note   (at = ISO 8601 UTC timestamp from scripts/now; source = coverage.tsv path; note = short topic only, no question text)
 ```
 
 `source` is the `coverage.tsv` path the agent judged relevant; `note` is a short topic phrase
@@ -50,8 +50,9 @@ New:
 
 ```markdown
 5. If the wiki cannot answer, read `.ingest/coverage.tsv`. If a plausibly relevant source is
-   `unread` or `partial`, append a `date<TAB>source<TAB>note` row to `.ingest/demand.tsv` (source =
-   its coverage path; note = a short topic phrase of what was needed, never the question text), and
+   `unread` or `partial`, append an `at<TAB>source<TAB>note` row to `.ingest/demand.tsv` (at = the
+   current timestamp from `scripts/now`; source = its coverage path; note = a short topic phrase of
+   what was needed, never the question text), and
    tell the user the answer likely lives in that source, which is not read yet and is now flagged
    for the next read pass. If no source plausibly covers the question, say it is a genuine gap. Do
    not read the source now to answer (that is a later phase) and do not guess; log the need and
@@ -67,13 +68,19 @@ In `scripts/ingest`, the `POLICY` string (set in the `--fresh` if/else) drives t
 frontier order. After the if/else sets `POLICY`, append a demand clause:
 
 ```bash
-POLICY="$POLICY Before that ordering, read .ingest/demand.tsv and coverage.tsv together: a demanded source is read FIRST this pass when its most recent demand date is AFTER that source's last_read in coverage.tsv — a question has asked for it since it was last read (an unread source, last_read '-', always qualifies). Read those demanded sources first, ahead of the value and freshness order. A source whose last_read is on or after its latest demand has been served, so it returns to the normal value order; this way a fresh demand re-prioritises even a partially-read source, but a served demand does not linger."
+POLICY="$POLICY Before that ordering, read .ingest/demand.tsv and coverage.tsv together: a demanded source is read FIRST this pass when its most recent demand timestamp is AFTER that source's last_read in coverage.tsv — a question asked for it since it was last read (an unread source, last_read '-', always qualifies). Both are ISO 8601 UTC timestamps from scripts/now, so compare them directly as strings (newer is greater). Read those demanded sources first, ahead of the value and freshness order. When you read a source set its last_read to scripts/now, which moves it past the demand so it is served and returns to the value order — this way a fresh demand re-prioritises even a partially-read source, even the same day, because the comparison is by time, not date."
 ```
 
 `POLICY` is interpolated only into the read and deepen prompts, so map and verify are unaffected.
-No new flag; demand prioritisation is automatic on every read/deepen pass. The freshness comparison
-(demand date vs `last_read`) is the same trick `scan --refresh` uses for staleness, so a demand is
-"live" exactly while a question has asked for the source since it was last read.
+No new flag; demand prioritisation is automatic on every read/deepen pass.
+
+The comparison works at **time** granularity, not date, so a question asked the same day a source
+was last read still re-prioritises it. Both sides are ISO 8601 UTC timestamps from a new helper,
+`scripts/now` (a one-line `date -u` wrapper): the agent stamps each demand row with it, and sets a
+source's `last_read` to it on every read. `last_read` carries no other logic in the kit (`scan`
+detects staleness by fingerprint, `stats` does not display it), so promoting it from a date to a
+timestamp is contained. ISO-UTC strings compare chronologically with a plain `>`, so no separate
+compare tool is needed.
 
 ## 5. Changed `scripts/stats`: DEMANDED report
 
@@ -84,17 +91,19 @@ Add a read-only section after MOST QUERIED, before COST, mirroring the existing 
 - Otherwise: a totals line (`N demand(s) across M source(s)`), then the top sources by demand
   count, each as `count  source  [status] live|served  (last asked DATE)`, where `status` is the
   source's current `coverage.tsv` status (`unread` / `partial` / `read`, or `?` if the path is not
-  in coverage) and `live`/`served` is whether the latest demand date is after the source's
+  in coverage) and `live`/`served` is whether the latest demand timestamp is after the source's
   `last_read` (live = the next ingest will read it; served = read since it was last demanded).
 
 No LLM. The lookup reads `coverage.tsv` status and `last_read` into maps, then aggregates
-`demand.tsv` and compares dates.
+`demand.tsv` and compares each source's latest demand timestamp to its `last_read`.
 
 ## 6. Changed `scripts/query`: prompt reminder
 
 After the existing `queries.tsv` clause in the `PROMPT` string, append: `If you cannot answer and
-a relevant source is unread, log it to .ingest/demand.tsv per the Query workflow (source path and a
-short topic note only).` No other `scripts/query` change.
+a relevant source is unread, log it to .ingest/demand.tsv per the Query workflow (a scripts/now
+timestamp, the source path, and a short topic note only, never the question text).` No other
+`scripts/query` change. A new `scripts/now` ships too (a one-line `date -u` ISO 8601 UTC wrapper)
+so the agent stamps demand rows and `last_read` with real time, not a guess.
 
 ## 7. Template ships the ledger
 
@@ -106,7 +115,7 @@ every generated KB has it from creation.
 ```
 query cannot be answered (scripts/query or interactive)
    -> agent reads coverage.tsv
-      -> relevant source unread/partial?  yes -> append date<TAB>source<TAB>note to demand.tsv,
+      -> relevant source unread/partial?  yes -> append at<TAB>source<TAB>note to demand.tsv,
                                                    tell user "flagged [source] for next read pass"
                                           no  -> "genuine gap, nothing covers this"
 
@@ -130,7 +139,7 @@ anytime: scripts/stats DEMANDED -> still-unread demanded sources (count, last as
 - **Privacy.** `demand.tsv` stores a `coverage.tsv` path (already an internal ledger value, no new
   exposure) and a short topic note, never the verbatim question, consistent with `queries.tsv`.
 - **Append-only, self-clearing backlog.** Demand never edits prior rows. A demanded source is
-  prioritised only while its latest demand date is after its `coverage.tsv` `last_read` (a question
+  prioritised only while its latest demand timestamp is after its `coverage.tsv` `last_read` (a question
   asked for it since it was last read); once a pass reads it, that demand is served and it returns
   to the normal value order. A directory source read only to `partial` does not linger as demanded,
   yet a fresh demand for it later re-activates it. No explicit cleanup; the rows stay as an audit

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # content.test.sh — builds a tiny fixture KB in a temp dir and checks scripts/content output.
+# jq 1.6-safe: extract with `jq -r`, assert in shell (avoids jq -e exit-code semantics).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# Fixture KB: schema + scripts + two content pages and one nav page.
 mkdir -p "$TMP/.schema" "$TMP/scripts" "$TMP/wiki/concepts"
 cp "$HERE/kblib.sh" "$TMP/scripts/kblib.sh"
 cp "$HERE/content" "$TMP/scripts/content"
@@ -16,12 +16,14 @@ printf -- '---\ntype: concept\nupdated: 2026-06-01\n---\n\n# Expenses\n\nExpense
 printf -- '---\ntype: overview\n---\n\n# Home\n\nNav page.\n' > "$TMP/wiki/overview.md"
 
 man="$("$TMP/scripts/content" --manifest)"
-echo "$man" | jq -e 'select(.id=="concepts/banking") | .hash | length > 0' >/dev/null || fail "manifest missing banking hash"
-echo "$man" | grep -q '"overview"' && fail "manifest included nav page"
-[ "$(echo "$man" | wc -l | tr -d ' ')" = "2" ] || fail "manifest should list exactly 2 content pages"
+[ -n "$(printf '%s\n' "$man" | jq -r 'select(.id=="concepts/banking") | .hash')" ] || fail "manifest missing banking hash"
+printf '%s\n' "$man" | grep -q '"overview"' && fail "manifest included nav page"
+[ "$(printf '%s\n' "$man" | grep -c '"id"')" = "2" ] || fail "manifest should list exactly 2 content pages"
 
 rec="$(printf 'concepts/banking\nconcepts/expenses\n' | "$TMP/scripts/content" --get)"
-echo "$rec" | jq -e 'select(.id=="concepts/banking") | .frontmatter.privilege=="business-sensitive" and .title=="Banking" and (.body|test("Accounts text"))' >/dev/null || fail "banking record wrong"
-echo "$rec" | jq -e 'select(.id=="concepts/expenses") | .frontmatter.privilege=="default"' >/dev/null || fail "missing-privilege page should default to lowest tier"
+[ "$(printf '%s\n' "$rec" | jq -r 'select(.id=="concepts/banking") | .frontmatter.privilege')" = "business-sensitive" ] || fail "banking privilege wrong"
+[ "$(printf '%s\n' "$rec" | jq -r 'select(.id=="concepts/banking") | .title')" = "Banking" ] || fail "banking title wrong"
+printf '%s\n' "$rec" | jq -r 'select(.id=="concepts/banking") | .body' | grep -q "Accounts text" || fail "banking body wrong"
+[ "$(printf '%s\n' "$rec" | jq -r 'select(.id=="concepts/expenses") | .frontmatter.privilege')" = "default" ] || fail "missing-privilege page should default to lowest tier"
 
 echo "PASS"

@@ -100,6 +100,26 @@ for f in $pages; do
   done
 done
 
+# --- privilege inheritance (a derived page carries the max tier of its inputs) --
+# An analysis synthesised from a business-sensitive page must not sit at default, or
+# publish will stage it into a role that was never cleared for its inputs.
+sect "privilege inheritance"
+for f in $pages; do
+  rel=${f#"$WIKI"/}
+  grep -qE '^derived_from:' "$f" || continue
+  pv="$(fm "$f" privilege)"; [ -n "$pv" ] || continue        # missing privilege: already an error above
+  kb_tier_valid "$pv" || continue                            # unknown tier: already warned above
+  prank="$(kb_tier_rank "$pv")"
+  for d in $(grep -E '^derived_from:' "$f" | grep -oE '\[\[[^]]+\]\]' | sed -E 's/\[\[([^]|#]+).*/\1/'); do
+    dfile=$(printf '%s\n' $pages | grep -E "/${d}\.md$" | head -1 || true); [ -n "$dfile" ] || continue
+    dpv="$(fm "$dfile" privilege)"; [ -n "$dpv" ] || continue
+    kb_tier_valid "$dpv" || continue
+    drank="$(kb_tier_rank "$dpv")"
+    [ "$drank" -gt "$prank" ] \
+      && err "$rel: privilege '$pv' is below input [[${d}]] ('$dpv'): a derived page inherits the maximum tier of its derived_from set"
+  done
+done
+
 # --- style tells -------------------------------------------------------------
 sect "style"
 bv=$(grep -rhoiwE 'crucial|robust|comprehensive|multifaceted|seamless|vibrant|boasts|nestled|testament|showcase[sd]?|underscore[sd]?|pivotal|delve|tapestry|renowned|groundbreaking|leverage[sd]?|intricate|meticulous' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')

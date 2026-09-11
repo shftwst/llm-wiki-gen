@@ -26,6 +26,7 @@ kb_tier_valid()   { _kb_tiers_raw | cut -f1 | grep -qxF "$1"; }                 
 kb_top_tier()     { _kb_tiers_raw | awk -F'\t' '{print $2"\t"$1}' | sort -n | tail -1 | cut -f2; }
 # Tier carrying a given classify bucket (business|personal); falls back to the most sensitive.
 kb_tier_for_bucket() { t="$(_kb_tiers_raw | awk -F'\t' -v b="$1" '$3==b{print $1; exit}')"; [ -n "$t" ] && printf '%s' "$t" || kb_top_tier; }
+kb_tier_rank()    { _kb_tiers_raw | awk -F'\t' -v t="$1" '$1==t{print $2; exit}'; }         # numeric rank, "" if unknown
 
 # Junk filter (.ingestignore) ------------------------------------------------
 # Patterns are loaded once into a variable so per-file checks need no re-read or subprocess.

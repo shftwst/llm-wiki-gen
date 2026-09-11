@@ -99,7 +99,7 @@ if [ "$MODE" = "refresh" ]; then
   [ -f "$COVERAGE" ] || { echo "scan: no coverage.tsv yet — run a map pass first."; exit 0; }
   tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
   grep '^#' "$COVERAGE" > "$tmp" || true
-  checked=0; baselined=0; staled=0
+  checked=0; baselined=0; staled=0; unresolved=0
   while IFS=$'\t' read -r path value status pass last_read fp notes; do
     [ -z "${path:-}" ] && continue
     if [ "${status:-}" = "read" ] || [ "${status:-}" = "partial" ]; then
@@ -109,6 +109,10 @@ if [ "$MODE" = "refresh" ]; then
         cur="$(fingerprint "$full")"
         if [ -z "${fp:-}" ] || [ "$fp" = "-" ]; then fp="$cur"; baselined=$((baselined + 1))
         elif [ "$cur" != "$fp" ]; then status="stale"; staled=$((staled + 1)); fi
+      else
+        # A read row whose path does not resolve cannot be freshness-checked.
+        # Silent 0-checked runs hid exactly this, so count and report it.
+        unresolved=$((unresolved + 1))
       fi
     fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -117,6 +121,7 @@ if [ "$MODE" = "refresh" ]; then
   mv "$tmp" "$COVERAGE"; trap - EXIT
   printf 'scan: freshness — %d checked, %d baselined, %d now stale → %s\n' \
     "$checked" "$baselined" "$staled" "${COVERAGE#"$KB_DIR"/}"
+  [ "$unresolved" -gt 0 ] && printf 'scan: WARNING — %d read/partial row(s) have paths that do not resolve under raw/; freshness cannot see them. Anchor coverage paths to real raw/-relative paths.\n' "$unresolved"
   [ "$staled" -gt 0 ] && exit 10 || exit 0
 fi
 

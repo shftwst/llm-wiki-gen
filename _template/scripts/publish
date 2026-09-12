@@ -77,6 +77,15 @@ kb_title() {
 quartz_set_title() {
   cfg="$QZ/quartz.config.ts"; [ -f "$cfg" ] || return 0
   T="$(printf '%s' "$1" | tr -d '"\\')" perl -0pi -e 's/pageTitle:\s*"(?:[^"\\]|\\.)*"/pageTitle: "$ENV{T}"/' "$cfg"
+  grep -qF "pageTitle: \"$1\"" "$cfg" || echo "publish: WARNING — pageTitle patch did not take; header will show the stock title" >&2
+}
+
+# quartz_strip_branding: hide the stock "Created with Quartz vX" footer. CSS rather than
+# patching Footer.tsx: stable across Quartz versions, and the default footer holds nothing
+# else worth keeping. Idempotent (custom.scss is regenerated only on a fresh clone).
+quartz_strip_branding() {
+  css="$QZ/quartz/styles/custom.scss"; [ -f "$css" ] || return 0
+  grep -q "kb-hide-quartz-footer" "$css" || printf '\n/* kb-hide-quartz-footer */\nfooter { display: none; }\n' >> "$css"
 }
 
 [ -f "$ROLES" ] || { echo "publish: no .publish/roles.tsv" >&2; exit 1; }
@@ -184,6 +193,7 @@ if [ "$ALL" = 0 ]; then
   [ "$MODE" = dry ] && exit 0
   ensure_quartz || { printf 'publish[%s]: content staged at %s; install Node+git (or set QUARTZ_DIR) and re-run.\n' "$ROLE" "${OUT#"$KB_DIR"/}" >&2; exit 0; }
   quartz_set_title "$TITLE"
+  quartz_strip_branding
   # Clear BOTH the staged content and the built output: a stale public/ from a previous
   # (higher-clearance) role would otherwise be served, leaking pages this role cannot see.
   rm -rf "$QZ/content" "$QZ/public"; cp -R "$OUT" "$QZ/content"

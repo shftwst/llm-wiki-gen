@@ -75,8 +75,18 @@ kb_title() {
 # quartz_set_title: patch the cloned Quartz's site title so the header stops reading the stock
 # "Quartz" default. Strips quotes/backslashes so the title can't break the TS string literal.
 quartz_set_title() {
-  cfg="$QZ/quartz.config.ts"; [ -f "$cfg" ] || return 0
-  T="$(printf '%s' "$1" | tr -d '"\\')" perl -0pi -e 's/pageTitle:\s*"(?:[^"\\]|\\.)*"/pageTitle: "$ENV{T}"/' "$cfg"
+  T="$(printf '%s' "$1" | tr -d '"\\')"
+  # Quartz v4: quartz.config.ts. Quartz v5: YAML (quartz.config.yaml overrides
+  # quartz.config.default.yaml; patch whichever exists, preferring the override).
+  if [ -f "$QZ/quartz.config.ts" ]; then
+    cfg="$QZ/quartz.config.ts"
+    T="$T" perl -0pi -e 's/pageTitle:\s*"(?:[^"\\]|\\.)*"/pageTitle: "$ENV{T}"/' "$cfg"
+  elif [ -f "$QZ/quartz.config.yaml" ] || [ -f "$QZ/quartz.config.default.yaml" ]; then
+    cfg="$QZ/quartz.config.yaml"; [ -f "$cfg" ] || cfg="$QZ/quartz.config.default.yaml"
+    T="$T" perl -pi -e 's/^(\s*)pageTitle:.*/$1pageTitle: "$ENV{T}"/' "$cfg"
+  else
+    echo "publish: WARNING — no Quartz config found to set the title in" >&2; return 0
+  fi
   grep -qF "pageTitle: \"$1\"" "$cfg" || echo "publish: WARNING — pageTitle patch did not take; header will show the stock title" >&2
 }
 

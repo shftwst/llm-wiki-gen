@@ -207,7 +207,7 @@ else
   # --all: stage + build every role into its own static output dir.
   QZOK=1
   [ "$MODE" = dry ] || ensure_quartz || QZOK=0
-  [ "$MODE" != dry ] && [ "$QZOK" = 1 ] && quartz_set_title "$TITLE"
+  [ "$MODE" != dry ] && [ "$QZOK" = 1 ] && { quartz_set_title "$TITLE"; quartz_strip_branding; }
   built=""
   for role in $(all_roles); do
     [ -n "$role" ] || continue

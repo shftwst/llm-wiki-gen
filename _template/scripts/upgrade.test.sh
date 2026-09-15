@@ -94,4 +94,27 @@ out="$(cd "$OLD" && ./scripts/upgrade --from "$KIT" 2>&1)" || true
 grep -q "Covers the old thing" "$OLD/CHARTER.md" || fail "lifted charter lost its content"
 printf '%s\n' "$out" | grep -q "lifted out of AGENTS.md" || fail "migration not reported: $out"
 
+# --- a KB with no .kit must not adopt files it cannot vouch for ---------------
+# This is the bootstrap case, and the checksum guard cannot help: with no baseline, a file that
+# differs could equally be behind the kit or edited here. Guessing wrong destroys real config.
+BARE="$KBS/bare"; mkdir -p "$BARE/scripts"
+cp "$KIT/_template/scripts/upgrade" "$BARE/scripts/upgrade"
+cp "$KIT/_template/.gitignore" "$BARE/.gitignore"
+printf 'raw/local-mount\n' >> "$BARE/.gitignore"        # the kind of line that must survive
+cp "$KIT/_template/STYLE.md" "$BARE/STYLE.md"
+bare_up() { (cd "$BARE" && ./scripts/upgrade --from "$KIT" "$@"); }
+
+set +e; out="$(bare_up 2>&1)"; rc=$?; set -e
+[ "$rc" -ne 0 ] || fail "first upgrade should stop on files with no baseline"
+printf '%s\n' "$out" | grep -q "UNKNOWN (no baseline)" || fail "unknown files not reported: $out"
+printf '%s\n' "$out" | grep -q ".gitignore" || fail "edited .gitignore not listed: $out"
+grep -q "raw/local-mount" "$BARE/.gitignore" || fail "first run clobbered .gitignore"
+
+# pin it, and the rest can be adopted
+(cd "$BARE" && ./scripts/upgrade --pin .gitignore >/dev/null)
+bare_up --adopt >/dev/null || fail "--adopt failed after pinning"
+grep -q "raw/local-mount" "$BARE/.gitignore" || fail "pinned .gitignore was overwritten"
+[ -f "$BARE/scripts/sweep" ] || fail "--adopt did not install the rest of the kit"
+bare_up --check | grep -q "up to date" || fail "not settled after adopt"
+
 echo "PASS"

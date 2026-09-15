@@ -7,6 +7,8 @@
 #   ./scripts/upgrade --check         report only: what is behind, what has been edited
 #   ./scripts/upgrade --pin <path>    mark a file you edited as deliberately divergent
 #   ./scripts/upgrade --force         take the kit's version of edited files (keeps a backup)
+#   ./scripts/upgrade --adopt         first run only: accept the kit's version of every file
+#                                     whose history this KB cannot vouch for
 #
 # A KB is templated once by new-kb and then frozen, so without this every fix stays in the kit.
 # The split that makes refreshing safe is in .kit-owned: those files are the kit's and are
@@ -44,12 +46,13 @@ kit_sha()  { awk -F'\t' -v p="$2" '$1=="file" && $2==p {print $3; exit}' "$1" 2>
 kit_state(){ awk -F'\t' -v p="$2" '$1=="file" && $2==p {print $4; exit}' "$1" 2>/dev/null || true; }
 
 # --- args --------------------------------------------------------------------
-FROM=""; VERSION=""; CHECK=0; FORCE=0; PIN=""
+FROM=""; VERSION=""; CHECK=0; FORCE=0; ADOPT=0; PIN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --from)  FROM="${2:?--from needs a path}"; shift 2;;
     --check) CHECK=1; shift;;
     --force) FORCE=1; shift;;
+    --adopt) ADOPT=1; shift;;
     --pin)   PIN="${2:?--pin needs a path}"; shift 2;;
     -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
     --*)     die "unknown flag '$1'";;
@@ -59,8 +62,15 @@ done
 
 # --pin edits the ledger and does nothing else: it is a statement about this KB, not a fetch.
 if [ -n "$PIN" ]; then
-  [ -f "$KIT_FILE" ] || die "no .kit here; nothing to pin against"
-  grep -q "^file	$PIN	" "$KIT_FILE" || die "'$PIN' is not a kit-owned file"
+  [ -f "$KB_DIR/$PIN" ] || die "no file at '$PIN' to pin"
+  # Pinning has to work on a KB that has never been upgraded, so seed the ledger if absent.
+  if [ ! -f "$KIT_FILE" ]; then
+    printf '# .kit — which kit produced this KB'"'"'s kit-owned files. Script-owned; do not edit.\n' > "$KIT_FILE"
+  fi
+  if ! grep -q "^file	$PIN	" "$KIT_FILE"; then
+    printf 'file\t%s\t%s\tpinned\n' "$PIN" "$(sha "$KB_DIR/$PIN")" >> "$KIT_FILE"
+    note "pinned $PIN; upgrades will skip it and say so."; exit 0
+  fi
   awk -F'\t' -v p="$PIN" 'BEGIN{OFS="\t"} $1=="file" && $2==p {$4="pinned"} {print}' \
     "$KIT_FILE" > "$KIT_FILE.tmp" && mv "$KIT_FILE.tmp" "$KIT_FILE"
   note "pinned $PIN; upgrades will skip it and say so."
@@ -155,14 +165,21 @@ if [ ! -f "$KB_DIR/CHARTER.md" ] && grep -q '^## Charter' "$KB_DIR/AGENTS.md" 2>
 fi
 
 # --- compare ------------------------------------------------------------------
-same=""; changed=""; edited=""; pinned=""; added=""
+# Without a .kit there is no baseline, so a file that differs from the kit could equally be
+# behind it or edited here, and guessing wrong destroys work. Anything unrecorded that differs
+# is reported as unknown and the upgrade stops, rather than adopting it silently.
+same=""; changed=""; edited=""; pinned=""; added=""; unknown=""
 for f in $FILES; do
   src="$(render "$f")"; dst="$KB_DIR/$f"
   if [ ! -f "$dst" ]; then added="$added $f"; continue; fi
   recorded="$(kit_sha "$KIT_FILE" "$f")"
   if [ "$(kit_state "$KIT_FILE" "$f")" = pinned ]; then pinned="$pinned $f"; continue; fi
   now="$(sha "$dst")"
-  if [ -n "$recorded" ] && [ "$now" != "$recorded" ]; then edited="$edited $f"; continue; fi
+  if [ -n "$recorded" ]; then
+    [ "$now" != "$recorded" ] && { edited="$edited $f"; continue; }
+  elif [ "$now" != "$(sha "$src")" ]; then
+    unknown="$unknown $f"; continue        # no baseline: cannot tell "behind" from "edited"
+  fi
   if [ "$now" = "$(sha "$src")" ]; then same="$same $f"; else changed="$changed $f"; fi
 done
 
@@ -175,6 +192,17 @@ if [ "$MIGRATED" -eq 1 ]; then
 fi
 report "to update" "$changed"; report "new" "$added"; report "unchanged" "$same"
 report "pinned, skipped" "$pinned"; report "EDITED HERE" "$edited"
+report "UNKNOWN (no baseline)" "$unknown"
+
+if [ -n "$unknown" ] && [ "$ADOPT" -eq 0 ] && [ "$CHECK" -eq 0 ]; then
+  echo
+  note "stopping: this KB has no .kit, so the files above cannot be told apart from local edits."
+  note "Look at each one, then:"
+  note "  keep yours:  ./scripts/upgrade --pin <path>   (repeat, then re-run)"
+  note "  take the kit's for the rest: ./scripts/upgrade --adopt"
+  exit 1
+fi
+[ "$ADOPT" -eq 1 ] && changed="$changed $unknown"
 
 if [ -n "$edited" ] && [ "$FORCE" -eq 0 ]; then
   echo

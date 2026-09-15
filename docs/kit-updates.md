@@ -189,10 +189,30 @@ that.
 `scripts/` stays committed to the base's own git history rather than being derived and ignored,
 because a base handed to a client should carry its tooling in its history.
 
+## The first upgrade has no baseline
+
+The checksum guard needs a `.kit` to compare against, and the first upgrade of an existing base
+has none. Every kit-owned file is then unrecorded, so nothing looks edited and a naive
+implementation adopts the kit's version of all of them. That is the most destructive moment in
+the whole design, and it is the one the guard does not cover.
+
+It is not guessable either. Without a baseline, a file that differs from the kit could equally
+be behind it or carry local changes, and the two are indistinguishable.
+
+So a file with no recorded checksum that differs from the kit is reported as unknown, and the
+upgrade stops. You look at each one and either `--pin` it to keep yours or, once the remaining
+ones are genuinely just behind, pass `--adopt` to take the kit's version of the rest. `--pin`
+works before any `.kit` exists, seeding one.
+
+This is not hypothetical. The first real base this was run against had `raw/onedrive-files` and
+`kb.git/` in its `.gitignore`, keeping a mounted source tree and a nested bare repo out of git.
+Silently adopting the kit's `.gitignore` would have removed both.
+
 ## Bootstrap
 
 Existing bases have no `scripts/upgrade` to run, so the first one arrives by hand: copy that
-single script in, or run it from a kit checkout against the base's path. It bites once per base that
+single script in, or run it from a kit checkout against the base's path. That first run then
+behaves as described above, refusing to adopt anything it cannot vouch for. It bites once per base that
 predates this, and never again.
 
 ## Not covered

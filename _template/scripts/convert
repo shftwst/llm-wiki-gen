@@ -63,7 +63,7 @@ for _u in $(kb_unresolved_sources "$RAW"); do
   _t="$(readlink "$RAW/$_u" 2>/dev/null || true)"
   case "$_t" in
     /*) echo "convert: raw/$_u -> $_t does not resolve here. It is an ABSOLUTE link, so it breaks wherever that path is absent, including inside a container even when the target is under KB_ROOT." >&2
-        echo "  fix: make the link relative (only if the target is under the KB root), or mount $_t at that same path, or convert on the machine that has it." >&2;;
+        echo "  fix: mount $_t at that same path (pinky's bootstrap does this for you), or make the link relative if its target is under the KB root." >&2;;
     *)  echo "convert: raw/$_u -> ${_t:-?} does not resolve here, so its sources are invisible. Run where the mount exists (not in a container)." >&2;;
   esac
   unresolved=$((unresolved + 1))

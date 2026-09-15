@@ -233,9 +233,11 @@ into a mount, so inside a container, or on a machine without that mount, it dang
 corpus reads as empty rather than unreachable. `convert` now names any such source and counts
 it in the summary, rather than reporting a clean zero.
 
-That is why the converters belong on the machine that runs `ingest`, not in the deployment
-images. A containerised conversion works only where every source sits physically under
-`KB_ROOT`, and silently sees nothing where one is a symlink out of it.
+Where every source sits physically under the mount, a container can do this and the host needs
+nothing installed: pinky's ops image takes the same four packages behind
+`PINKY_WITH_CONVERTERS=1`, and `pinky convert <kb>` runs this script there. Where a source is a
+symlink out of the mount, convert on the machine that runs `ingest`, which is the only place it
+resolves. The unreachable-source message above is what tells the two apart.
 
 ## `publish`: role-filtered views for the web
 

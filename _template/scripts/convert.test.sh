@@ -107,6 +107,18 @@ out="$(run sub/addendum.docx 2>/dev/null)"
 printf '%s\n' "$out" | grep -q "sub/addendum.docx → " || fail "single-path convert failed: $out"
 [ "$(field sub/addendum.docx 4)" = pandoc ] || fail "single-path row not written"
 
+# --- an extraction that yields nothing is reported, not counted as converted -----------------
+printf 'this is not a docx\n' > "$KB/raw/mislabelled.docx"
+cat > "$BIN/pandoc" <<'EOF'
+#!/usr/bin/env bash
+out=""; while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; -t) shift 2;; --*) shift;; *) src="$1"; shift;; esac; done
+case "$src" in *mislabelled*) : > "$out";; *) printf 'PANDOC TEXT FROM %s\n' "$(basename "$src")" > "$out";; esac
+EOF
+chmod +x "$BIN/pandoc"
+out="$(run 2>&1)"
+printf '%s\n' "$out" | grep -q "yielded NO TEXT" || fail "empty extraction not surfaced: $out"
+[ "$(field mislabelled.docx 5)" = empty ] || fail "empty status not recorded"
+
 # --- a living source that does not resolve is called out, not silently skipped ---------------
 # find -L walks nothing through a dangling symlink, so the corpus reads as empty rather than
 # unreachable. A clean "0 converted" is the worst way to discover a mount is missing.

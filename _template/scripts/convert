@@ -98,7 +98,7 @@ index_lookup() {
   awk -F'\t' -v p="$1" '$1==p {print $2" "$3; exit}' "$INDEX"
 }
 
-converted=0; skipped=0; scans=0; unchanged=0
+converted=0; skipped=0; scans=0; unchanged=0; empties=0
 
 # Follow symlinks: a living source is a link into a mount, and its files are the point.
 if [ -n "$ONE" ]; then
@@ -143,7 +143,10 @@ for f in $files; do
     status=scanned                              # no text layer: needs OCR or a vision pass
     scans=$((scans + 1))
   elif [ "$chars" -lt 1 ]; then
+    # The tool ran and produced nothing. Usually it failed, or the file is not what its
+    # extension claims. Either way it is not "converted", so say so rather than counting it.
     status=empty
+    empties=$((empties + 1))
   fi
 
   grep -v -F "$(printf '%s\t' "$rel")" "$INDEX" > "$INDEX.tmp" 2>/dev/null || cp "$INDEX" "$INDEX.tmp"
@@ -162,5 +165,6 @@ fi
 msg="convert: $converted converted, $unchanged unchanged"
 [ "$unresolved" -gt 0 ] && msg="$msg; $unresolved living source(s) UNREACHABLE here"
 [ "$skipped" -gt 0 ] && msg="$msg, $skipped skipped (missing tools)"
+[ "$empties" -gt 0 ] && msg="$msg; $empties yielded NO TEXT (status=empty — the tool failed, or the file is not what its extension says)"
 [ "$scans"   -gt 0 ] && msg="$msg; $scans PDF(s) have no text layer (status=scanned — OCR or a vision pass)"
 echo "$msg."

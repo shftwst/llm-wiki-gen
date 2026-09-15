@@ -24,12 +24,15 @@
 # rely on the AGENTS.md rule plus whatever sandbox the agent itself provides. kb_agent_init says
 # so once per run.
 #
-# After kb_agent_run: AGENT_COST, AGENT_TURNS, AGENT_DUR, AGENT_MODEL_USED are set (empty when
-# the driver cannot report them). kb_cost_record appends a cost.tsv row only when AGENT_COST is
-# non-empty. No bash 4 features.
+# After kb_agent_run: AGENT_COST, AGENT_TURNS, AGENT_DUR, AGENT_MODEL_USED are set, plus the
+# token counts AGENT_IN_TOK, AGENT_OUT_TOK, AGENT_CACHE_R, AGENT_CACHE_W (empty when the driver
+# cannot report them). kb_cost_record appends a cost.tsv row when EITHER a cost or a token count
+# came back: a gateway or local model priced outside the CLI reports usage but no dollar figure,
+# and a ledger that records nothing at all for those runs goes blind exactly when you most want
+# to know what the run consumed. No bash 4 features.
 
 _KB_COST_TSV="$KB_DIR/.ingest/cost.tsv"
-_KB_COST_HEADER=$'# cost.tsv — per-run ingest cost ledger (appended by scripts/ingest).\n# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode\tmodel'
+_KB_COST_HEADER=$'# cost.tsv — per-run ingest usage ledger (appended by scripts/ingest).\n# cost_usd is empty for models the CLI cannot price (gateway, local); the token counts still land.\n# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode\tmodel\tin_tokens\tout_tokens\tcache_read\tcache_write'
 _KB_TAG="${_KB_TAG:-$(basename "${BASH_SOURCE[1]:-agent}")}"   # message prefix: the calling script's name
 
 # --watch renderer for Claude's stream-json (one readable line per event).
@@ -53,6 +56,7 @@ kb_agent_init() {
   AUTO="${AUTO:-0}"; WATCH="${WATCH:-0}"
   HAVE_JQ=0; command -v jq >/dev/null 2>&1 && HAVE_JQ=1
   AGENT_COST=""; AGENT_TURNS=""; AGENT_DUR=""; AGENT_MODEL_USED=""
+  AGENT_IN_TOK=""; AGENT_OUT_TOK=""; AGENT_CACHE_R=""; AGENT_CACHE_W=""
   case "$AGENT" in
     claude)
       AGENT_BIN="${KB_AGENT_BIN:-${CLAUDE_BIN:-claude}}"
@@ -109,6 +113,7 @@ kb_agent_check() {
 kb_agent_run() {
   local prompt="$1" rc=0 stream
   AGENT_COST=""; AGENT_TURNS=""; AGENT_DUR=""; AGENT_MODEL_USED="$MODEL"
+  AGENT_IN_TOK=""; AGENT_OUT_TOK=""; AGENT_CACHE_R=""; AGENT_CACHE_W=""
   case "$AGENT" in
     claude)
       if [ "$HAVE_JQ" -eq 0 ]; then
@@ -129,6 +134,11 @@ kb_agent_run() {
       AGENT_COST="$(jq -r 'select(.type=="result") | .total_cost_usd // empty' "$stream" 2>/dev/null | tail -1 || true)"
       AGENT_TURNS="$(jq -r 'select(.type=="result") | .num_turns // empty'      "$stream" 2>/dev/null | tail -1 || true)"
       AGENT_DUR="$(jq -r 'select(.type=="result") | .duration_ms // empty'      "$stream" 2>/dev/null | tail -1 || true)"
+      # Usage is on the same result event as the cost, and survives when the cost does not.
+      AGENT_IN_TOK="$(jq -r 'select(.type=="result") | .usage.input_tokens // empty'  "$stream" 2>/dev/null | tail -1 || true)"
+      AGENT_OUT_TOK="$(jq -r 'select(.type=="result") | .usage.output_tokens // empty' "$stream" 2>/dev/null | tail -1 || true)"
+      AGENT_CACHE_R="$(jq -r 'select(.type=="result") | .usage.cache_read_input_tokens // empty'     "$stream" 2>/dev/null | tail -1 || true)"
+      AGENT_CACHE_W="$(jq -r 'select(.type=="result") | .usage.cache_creation_input_tokens // empty' "$stream" 2>/dev/null | tail -1 || true)"
       local used
       used="$(jq -r 'select(.type=="system" and .subtype=="init") | .model // empty' "$stream" 2>/dev/null | head -1 || true)"
       [ -n "$used" ] && AGENT_MODEL_USED="$used"
@@ -160,13 +170,32 @@ kb_agent_run() {
 # kb_cost_record <sources> <mode>: append a cost.tsv row from the last run (when the driver
 # reported a cost) and print a one-line summary. Silent no-op otherwise.
 kb_cost_record() {
-  if [ -z "$AGENT_COST" ]; then
-    [ "$AGENT" = "claude" ] && [ "$HAVE_JQ" -eq 1 ] && echo "$_KB_TAG: no cost field in result; cost ledger not updated." >&2
+  if [ -z "$AGENT_COST" ] && [ -z "$AGENT_IN_TOK" ]; then
+    [ "$AGENT" = "claude" ] && [ "$HAVE_JQ" -eq 1 ] && echo "$_KB_TAG: no cost or usage in result; ledger not updated." >&2
     return 0
   fi
-  [ -f "$_KB_COST_TSV" ] || printf '%s\n' "$_KB_COST_HEADER" > "$_KB_COST_TSV"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F)" "$AGENT_COST" "$AGENT_TURNS" "$AGENT_DUR" "$1" "$2" "$AGENT_MODEL_USED" >> "$_KB_COST_TSV"
-  local total
-  total="$(awk -F'\t' '$1 !~ /^#/ {s+=$2} END{printf "%.4f", s+0}' "$_KB_COST_TSV")"
-  printf '%s: cost $%s (%s turns, %s pass, %s); cumulative $%s\n' "$_KB_TAG" "$AGENT_COST" "${AGENT_TURNS:-?}" "$2" "$AGENT_MODEL_USED" "$total"
+  if [ ! -f "$_KB_COST_TSV" ]; then
+    printf '%s\n' "$_KB_COST_HEADER" > "$_KB_COST_TSV"
+  elif ! grep -q 'in_tokens' "$_KB_COST_TSV"; then
+    # Older ledgers describe seven columns. The rows stay valid (the new fields append), so
+    # only the header comment is rewritten, in place.
+    { printf '%s\n' "$_KB_COST_HEADER"; grep -v '^#' "$_KB_COST_TSV"; } > "$_KB_COST_TSV.tmp"
+    mv "$_KB_COST_TSV.tmp" "$_KB_COST_TSV"
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date +%F)" "$AGENT_COST" "$AGENT_TURNS" "$AGENT_DUR" "$1" "$2" "$AGENT_MODEL_USED" \
+    "$AGENT_IN_TOK" "$AGENT_OUT_TOK" "$AGENT_CACHE_R" "$AGENT_CACHE_W" >> "$_KB_COST_TSV"
+
+  local tokens=""
+  [ -n "$AGENT_IN_TOK" ] && tokens=" ${AGENT_IN_TOK} in / ${AGENT_OUT_TOK:-?} out tokens"
+  if [ -n "$AGENT_COST" ]; then
+    local total
+    total="$(awk -F'\t' '$1 !~ /^#/ {s+=$2} END{printf "%.4f", s+0}' "$_KB_COST_TSV")"
+    printf '%s: cost $%s%s (%s turns, %s pass, %s); cumulative $%s\n' \
+      "$_KB_TAG" "$AGENT_COST" "$tokens" "${AGENT_TURNS:-?}" "$2" "$AGENT_MODEL_USED" "$total"
+  else
+    # Priced outside the CLI: report what was consumed rather than nothing.
+    printf '%s: no price reported for %s;%s (%s turns, %s pass)\n' \
+      "$_KB_TAG" "$AGENT_MODEL_USED" "$tokens" "${AGENT_TURNS:-?}" "$2"
+  fi
 }

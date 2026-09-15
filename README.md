@@ -185,6 +185,29 @@ KB_AGENT=cmd KB_AGENT_CMD='codex exec --full-auto -' ./scripts/ingest   # anythi
 that physically blocks writes under `raw/`; with another agent the sources are protected by the
 rule in `AGENTS.md` and that agent's own sandbox, so share `raw/` read-only if that matters.
 
+### Against a gateway or a local model
+
+The Claude Code driver talks to whatever `ANTHROPIC_BASE_URL` points at, so a gateway or a
+locally served model needs no new driver, just the environment:
+
+```sh
+export ANTHROPIC_BASE_URL=http://localhost:4000   # your gateway
+export ANTHROPIC_AUTH_TOKEN=...                   # whatever it expects
+export KB_MODEL=qwen3.8-27b                       # the name the GATEWAY knows
+./scripts/ingest
+```
+
+`KB_MODEL` is the model name, and it is the one people get wrong: it must be the name your
+gateway routes on, not an Anthropic model id. `KB_AGENT_BIN` (or the older `CLAUDE_BIN`) picks
+the binary if `claude` is not on your PATH. For a model with no Anthropic-compatible endpoint,
+use a different driver instead: `KB_AGENT=hermes`, or `KB_AGENT=cmd` with `KB_AGENT_CMD` set to
+anything that reads a prompt on stdin.
+
+Cost works differently off Anthropic. The CLI prices Anthropic models only, so a gateway run
+reports no dollar figure. `.ingest/cost.tsv` still records the run with its token counts
+(`in_tokens`, `out_tokens`, `cache_read`, `cache_write`) and an empty `cost_usd`, so the ledger
+stays meaningful and you can price it yourself from your gateway's rates.
+
 Every script and flag, in detail: [`_template/scripts/README.md`](_template/scripts/README.md).
 
 ## License

@@ -23,7 +23,12 @@ cat > "$TMP/bin/claude" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$FAKE_LOG"
 echo '{"type":"system","subtype":"init","model":"fake-model-1"}'
-echo '{"type":"result","subtype":"success","result":"claude reply","total_cost_usd":0.42,"num_turns":3,"duration_ms":1200}'
+usage='"usage":{"input_tokens":1200,"output_tokens":340,"cache_read_input_tokens":800,"cache_creation_input_tokens":90}'
+if [ -n "${FAKE_NO_COST:-}" ]; then
+  echo "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"claude reply\",\"num_turns\":3,\"duration_ms\":1200,$usage}"
+else
+  echo "{\"type\":\"result\",\"subtype\":\"success\",\"result\":\"claude reply\",\"total_cost_usd\":0.42,\"num_turns\":3,\"duration_ms\":1200,$usage}"
+fi
 EOF
 chmod +x "$TMP/bin/hermes" "$TMP/bin/claude"
 export PATH="$TMP/bin:$PATH"
@@ -100,10 +105,32 @@ row="$(grep -v '^#' "$TMP/kb/.ingest/cost.tsv" | tail -1)"
 [ "$(printf '%s' "$row" | cut -f5)" = "2" ] || fail "cost.tsv: sources column"
 [ "$(printf '%s' "$row" | cut -f6)" = "read" ] || fail "cost.tsv: mode column"
 [ "$(printf '%s' "$row" | cut -f7)" = "fake-model-1" ] || fail "cost.tsv: model column"
+[ "$(printf '%s' "$row" | cut -f8)"  = "1200" ] || fail "cost.tsv: in_tokens column"
+[ "$(printf '%s' "$row" | cut -f9)"  = "340" ]  || fail "cost.tsv: out_tokens column"
+[ "$(printf '%s' "$row" | cut -f10)" = "800" ]  || fail "cost.tsv: cache_read column"
+[ "$(printf '%s' "$row" | cut -f11)" = "90" ]   || fail "cost.tsv: cache_write column"
+grep -q 'in_tokens' "$TMP/kb/.ingest/cost.tsv" || fail "cost.tsv: header not describing token columns"
+
+# A model the CLI cannot price still lands a row: usage is what keeps the ledger meaningful
+# on a gateway or a local model.
+out="$(FAKE_NO_COST=1 lib 'kb_agent_init; kb_agent_run "p" >/dev/null; kb_cost_record 1 read')"
+row="$(grep -v '^#' "$TMP/kb/.ingest/cost.tsv" | tail -1)"
+[ -z "$(printf '%s' "$row" | cut -f2)" ] || fail "cost.tsv: priceless run should leave cost empty"
+[ "$(printf '%s' "$row" | cut -f8)" = "1200" ] || fail "cost.tsv: priceless run lost its token counts"
+printf '%s\n' "$out" | grep -q "no price reported" || fail "priceless run summary wrong: $out"
+printf '%s\n' "$out" | grep -q "1200 in / 340 out" || fail "priceless run did not report usage: $out"
+
+# An old seven-column ledger keeps its rows and gains the new header.
+printf '# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode\tmodel\n2026-01-01\t1.5\t2\t10\t1\tread\tm\n' \
+  > "$TMP/kb/.ingest/cost.tsv"
+lib 'kb_agent_init; kb_agent_run "p" >/dev/null; kb_cost_record 1 read >/dev/null'
+grep -q 'in_tokens' "$TMP/kb/.ingest/cost.tsv" || fail "old ledger header not upgraded"
+grep -q '^2026-01-01' "$TMP/kb/.ingest/cost.tsv" || fail "old ledger rows lost on upgrade"
+
 n_before="$(grep -vc '^#' "$TMP/kb/.ingest/cost.tsv")"
 KB_AGENT=hermes lib 'kb_agent_init; kb_agent_run "p" >/dev/null; kb_cost_record 0 query >/dev/null'
 n_after="$(grep -vc '^#' "$TMP/kb/.ingest/cost.tsv")"
-[ "$n_before" = "$n_after" ] || fail "cost.tsv: hermes (no cost) must not append a row"
+[ "$n_before" = "$n_after" ] || fail "cost.tsv: hermes (no cost, no usage) must not append a row"
 
 # --- scripts/query end to end via hermes --------------------------------------------------
 out="$(cd "$TMP/kb" && KB_AGENT=hermes ./scripts/query "what rate?" 2>/dev/null)"

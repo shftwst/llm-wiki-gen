@@ -265,7 +265,8 @@ services:
 ```
 
 Read-only, because sources are never written. `convert` names any source it cannot reach and says which
-of these two cases it is.
+of these two cases it is, at any depth under `raw/`: sources are usually grouped, so a link
+commonly sits at `raw/<group>/<name>` rather than directly under `raw/`.
 
 Where every source sits physically under the mount, or is linked relatively, a container can do
 this and the host needs nothing installed: pinky's ops image takes the same four packages behind

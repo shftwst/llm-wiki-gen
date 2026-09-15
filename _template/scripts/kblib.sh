@@ -144,16 +144,20 @@ kb_page_derived_tier() {
 }
 
 # Living sources (unresolved symlinks) --------------------------------------
-# kb_unresolved_sources <raw-dir>: print each top-level entry that is a symlink not resolving
-# here, one per line. A living source points into a mount, so on a machine without that mount,
-# or inside a container where it points outside the bind, it dangles. `find -L` then walks
-# nothing and the corpus reads as empty rather than unreachable, which is the difference
-# between "nothing to do" and "everything is invisible".
+# kb_unresolved_sources <raw-dir>: print every symlink under raw/ that does not resolve here,
+# at any depth, as a raw/-relative path. A living source points into a mount, so on a machine
+# without that mount, or inside a container where it points outside the bind, it dangles.
+# `find -L` then walks nothing and the corpus reads as empty rather than unreachable, which is
+# the difference between "nothing to do" and "everything is invisible".
+#
+# At any depth on purpose: sources are usually grouped, so the link sits at raw/<group>/<name>
+# rather than directly under raw/, and a top-level-only scan missed exactly those. find without
+# -L does not descend through a symlink, so a link that DOES resolve is never walked into and
+# the target's own tree is not searched.
 kb_unresolved_sources() {
   [ -d "$1" ] || return 0
-  for _e in "$1"/*; do
-    [ -L "$_e" ] || continue
+  find "$1" -type l 2>/dev/null | sort | while IFS= read -r _e; do
     [ -e "$_e" ] && continue
-    printf '%s\n' "${_e##*/}"
+    printf '%s\n' "${_e#"$1"/}"
   done
 }

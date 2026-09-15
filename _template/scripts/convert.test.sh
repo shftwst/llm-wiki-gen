@@ -141,6 +141,14 @@ printf '%s\n' "$out" | grep -q "UNREACHABLE here" || fail "summary did not flag 
 out="$(run 2>&1)"
 printf '%s\n' "$out" | grep -q "UNREACHABLE here" || fail "real run did not flag it: $out"
 
+# a link nested under raw/ is found too: sources are usually grouped, so the link commonly
+# sits at raw/<group>/<name> rather than directly under raw/
+mkdir -p "$KB/raw/grouped"
+ln -s /nonexistent/deeper-mount "$KB/raw/grouped/deeper"
+out="$(run --dry-run 2>&1)"
+printf '%s\n' "$out" | grep -q "raw/grouped/deeper" || fail "nested unreachable source missed: $out"
+rm -f "$KB/raw/grouped/deeper"
+
 # a symlink that DOES resolve is ordinary and says nothing
 mkdir -p "$TMP/real-mount"; printf 'zipbytes' > "$TMP/real-mount/linked.docx"
 ln -s "$TMP/real-mount" "$KB/raw/good-mount"

@@ -55,9 +55,16 @@ esac
 
 # Say so before walking: a living source that does not resolve here makes the corpus look empty
 # instead of unreachable, and a clean "0 converted" is the worst possible way to find out.
+# An ABSOLUTE symlink breaks in a container even when its target is inside KB_ROOT, because the
+# root is mounted somewhere else (/knowledge) and the host path does not exist there. A relative
+# one pointing inside the root works fine. That distinction decides the advice, so give it.
 unresolved=0
 for _u in $(kb_unresolved_sources "$RAW"); do
-  echo "convert: raw/$_u does not resolve here, so its sources are invisible. Run where the mount exists (not in a container)." >&2
+  _t="$(readlink "$RAW/$_u" 2>/dev/null || true)"
+  case "$_t" in
+    /*) echo "convert: raw/$_u -> $_t does not resolve here. It is an ABSOLUTE link, so it breaks wherever that path does not exist, including inside a container even when the target is under KB_ROOT. Make it relative, or convert on the machine that has the mount." >&2;;
+    *)  echo "convert: raw/$_u -> ${_t:-?} does not resolve here, so its sources are invisible. Run where the mount exists (not in a container)." >&2;;
+  esac
   unresolved=$((unresolved + 1))
 done
 mkdir -p "$OUT"

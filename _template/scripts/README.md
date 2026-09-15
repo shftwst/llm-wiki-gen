@@ -238,8 +238,23 @@ into a mount, so inside a container, or on a machine without that mount, it dang
 corpus reads as empty rather than unreachable. `convert` now names any such source and counts
 it in the summary, rather than reporting a clean zero.
 
-Where every source sits physically under the mount, a container can do this and the host needs
-nothing installed: pinky's ops image takes the same four packages behind
+Whether a container can see a symlinked source depends on how the link is written, not only on
+where it points:
+
+| `raw/` entry | On the host | In a container |
+|---|---|---|
+| a real file or directory | works | works |
+| relative symlink, target under the KB root | works | works |
+| absolute symlink, target under the KB root | works | **breaks**: the root is mounted elsewhere |
+| absolute symlink, target outside the KB root | works | breaks |
+
+An absolute link records the host's path, and inside a container the knowledge base root is
+mounted somewhere else, so that path does not exist even when the target sits within the root.
+Writing the link relative fixes it. `convert` names any source it cannot reach and says which
+of these two cases it is.
+
+Where every source sits physically under the mount, or is linked relatively, a container can do
+this and the host needs nothing installed: pinky's ops image takes the same four packages behind
 `PINKY_WITH_CONVERTERS=1`, and `pinky convert <kb>` runs this script there. Where a source is a
 symlink out of the mount, convert on the machine that runs `ingest`, which is the only place it
 resolves. The unreachable-source message above is what tells the two apart.

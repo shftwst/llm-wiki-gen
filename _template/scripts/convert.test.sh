@@ -133,7 +133,10 @@ printf '%s\n' "$out" | grep -q "yielded NO TEXT" || fail "empty extraction not s
 # unreachable. A clean "0 converted" is the worst way to discover a mount is missing.
 ln -s /nonexistent/living-mount "$KB/raw/living-mount"
 out="$(run --dry-run 2>&1)"
-printf '%s\n' "$out" | grep -q "raw/living-mount does not resolve here" || fail "unreachable source not reported: $out"
+printf '%s\n' "$out" | grep -q "raw/living-mount" || fail "unreachable source not reported: $out"
+# An absolute link gets different advice: it breaks wherever that path is absent, including a
+# container whose mount point differs, even when the target sits under KB_ROOT.
+printf '%s\n' "$out" | grep -q "ABSOLUTE link" || fail "absolute link advice missing: $out"
 printf '%s\n' "$out" | grep -q "UNREACHABLE here" || fail "summary did not flag it: $out"
 out="$(run 2>&1)"
 printf '%s\n' "$out" | grep -q "UNREACHABLE here" || fail "real run did not flag it: $out"

@@ -6,6 +6,8 @@
 #   ./scripts/upgrade --from <path>   use a checkout, an unpacked release, or a tarball
 #   ./scripts/upgrade --check         report only: what is behind, what has been edited
 #   ./scripts/upgrade --pin <path>    mark a file you edited as deliberately divergent
+#   ./scripts/upgrade --unpin <path>  undo that, and decide about the file on the next upgrade
+#   ./scripts/upgrade --pinned        list what is pinned here
 #   ./scripts/upgrade --force         take the kit's version of edited files (keeps a backup)
 #   ./scripts/upgrade --adopt         first run only: accept the kit's version of every file
 #                                     whose history this KB cannot vouch for
@@ -46,7 +48,7 @@ kit_sha()  { awk -F'\t' -v p="$2" '$1=="file" && $2==p {print $3; exit}' "$1" 2>
 kit_state(){ awk -F'\t' -v p="$2" '$1=="file" && $2==p {print $4; exit}' "$1" 2>/dev/null || true; }
 
 # --- args --------------------------------------------------------------------
-FROM=""; VERSION=""; CHECK=0; FORCE=0; ADOPT=0; PIN=""
+FROM=""; VERSION=""; CHECK=0; FORCE=0; ADOPT=0; PIN=""; UNPIN=""; LIST_PINNED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --from)  FROM="${2:?--from needs a path}"; shift 2;;
@@ -54,11 +56,32 @@ while [ $# -gt 0 ]; do
     --force) FORCE=1; shift;;
     --adopt) ADOPT=1; shift;;
     --pin)   PIN="${2:?--pin needs a path}"; shift 2;;
+    --unpin) UNPIN="${2:?--unpin needs a path}"; shift 2;;
+    --pinned) LIST_PINNED=1; shift;;
     -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
     --*)     die "unknown flag '$1'";;
     *)       VERSION="$1"; shift;;
   esac
 done
+
+if [ "$LIST_PINNED" -eq 1 ]; then
+  [ -f "$KIT_FILE" ] || { note "nothing pinned (no .kit yet)."; exit 0; }
+  n="$(awk -F'\t' '$1=="file" && $4=="pinned" {print "  "$2}' "$KIT_FILE" | tee /dev/stderr | wc -l | tr -d ' ')"
+  [ "$n" = 0 ] && note "nothing pinned." || note "$n file(s) pinned; upgrades skip them."
+  exit 0
+fi
+
+# --unpin is the inverse of --pin. It drops the row rather than flipping the state back to
+# tracked, because the recorded checksum is of YOUR version: left in place, the next upgrade
+# would see it match, call the file unmodified, and quietly overwrite your work. With no row
+# the file has no baseline, which is the case the upgrade already stops and asks about.
+if [ -n "$UNPIN" ]; then
+  [ -f "$KIT_FILE" ] || die "no .kit here; nothing is pinned"
+  grep -q "^file	$UNPIN	.*	pinned$" "$KIT_FILE" || die "'$UNPIN' is not pinned"
+  grep -v "^file	$UNPIN	" "$KIT_FILE" > "$KIT_FILE.tmp" && mv "$KIT_FILE.tmp" "$KIT_FILE"
+  note "unpinned $UNPIN; the next upgrade will ask what to do with it rather than assume."
+  exit 0
+fi
 
 # --pin edits the ledger and does nothing else: it is a statement about this KB, not a fetch.
 if [ -n "$PIN" ]; then

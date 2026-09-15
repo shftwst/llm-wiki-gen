@@ -165,7 +165,11 @@ checksum differs has been edited locally, and the update stops rather than overw
 The report names each edited file and offers two ways forward:
 
 - **pin it.** The base keeps its version, `.kit` records the file as deliberately divergent, and
-  future updates skip it and say so. An accidental divergence becomes a declared one.
+  future updates skip it and say so. An accidental divergence becomes a declared one. `--unpin`
+  reverses it and `--pinned` lists what is pinned, so the decision is not one-way: unpinning
+  drops the row rather than restoring `tracked`, because the recorded checksum is of the local
+  version and leaving it would make the next update read the file as unmodified and overwrite
+  it.
 - **take the kit's.** The local file is saved beside it as `<name>.local-backup` first, so the
   edit is recoverable, and the kit version is written.
 

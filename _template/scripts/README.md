@@ -99,9 +99,16 @@ a file that still matches is refreshed and one that differs has been edited here
 stops and names it, and you choose:
 
 ```sh
-./scripts/upgrade --pin scripts/lint   # keep yours; upgrades skip it and say so
-./scripts/upgrade --force              # take the kit's; yours kept as <path>.local-backup
+./scripts/upgrade --pin scripts/lint     # keep yours; upgrades skip it and say so
+./scripts/upgrade --unpin scripts/lint   # undo that; the next upgrade asks about the file again
+./scripts/upgrade --pinned               # what is pinned here
+./scripts/upgrade --force                # take the kit's; yours kept as <path>.local-backup
 ```
+
+Unpinning drops the file's row rather than marking it tracked again. The checksum recorded
+while it was pinned is of *your* version, so leaving it would make the next upgrade see a match,
+call the file unmodified and overwrite your work. With no row it has no baseline, which is the
+case the upgrade already stops and asks about.
 
 `lint` reports edited kit-owned files too, cheaply and without network, so you find out before
 an upgrade stops rather than during one.

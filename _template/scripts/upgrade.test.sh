@@ -71,6 +71,25 @@ printf '%s\n' "$out" | grep -q "pinned, skipped" || fail "pinned file not report
 grep -q "edited by the owner" "$KB/scripts/lint" || fail "pinned file was overwritten"
 grep -q "yet another kit change" "$KB/scripts/lint" && fail "pinned file took the kit's version"
 
+# --- pin is reversible ------------------------------------------------------
+out="$(cd "$KB" && ./scripts/upgrade --pinned 2>&1)"
+printf '%s\n' "$out" | grep -q "scripts/lint" || fail "--pinned did not list the pinned file: $out"
+
+(cd "$KB" && ./scripts/upgrade --unpin scripts/lint >/dev/null)
+grep -q "^file	scripts/lint	" "$KB/.kit" && fail "unpin left a row, so the next upgrade would trust a stale checksum"
+out="$(cd "$KB" && ./scripts/upgrade --pinned 2>&1)"
+printf '%s\n' "$out" | grep -q "nothing pinned" || fail "--pinned still reports it: $out"
+
+# with no baseline the upgrade must ask rather than silently overwrite the edit
+set +e; out="$(up 2>&1)"; rc=$?; set -e
+[ "$rc" -ne 0 ] || fail "after unpin the upgrade should stop and ask"
+printf '%s\n' "$out" | grep -q "UNKNOWN (no baseline)" || fail "unpinned file not treated as unknown: $out"
+grep -q "edited by the owner" "$KB/scripts/lint" || fail "the edit was lost on unpin"
+
+(cd "$KB" && ./scripts/upgrade --pin scripts/lint >/dev/null)   # put it back for later checks
+set +e; (cd "$KB" && ./scripts/upgrade --unpin scripts/sweep >/dev/null 2>&1); rc=$?; set -e
+[ "$rc" -ne 0 ] || fail "unpinning a file that is not pinned should fail"
+
 # --- force takes the kit's, keeping a backup ---------------------------------
 printf '\n# owner edit to classify\n' >> "$KB/scripts/classify"
 printf '\n# kit edit to classify\n' >> "$KIT/_template/scripts/classify"

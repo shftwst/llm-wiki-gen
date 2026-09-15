@@ -216,8 +216,10 @@ files.
 Every page carries a **`privilege`** tier in frontmatter so privileged content can be
 categorised. The tier ladder is configurable per KB in `.schema/privilege-tiers.tsv` (least to
 most sensitive; lint validates `privilege` against it, `classify` maps keyword buckets to it,
-and `roles.tsv` grants each published role a subset). *Not gated yet, purely a label* (access
-control may come later). The defaults that ship with the kit:
+and `roles.tsv` grants each published role a subset). The tier is **enforced**, not decorative:
+`publish` stages only the pages a role is cleared for, and an MCP credential's role filters
+what search, page reads and link lists return. Getting it wrong exposes content. The defaults
+that ship with the kit:
 
 - **`default`**: ordinary content; nothing confidential.
 - **`business-sensitive`**: derived from confidential business material: contracts, rates,
@@ -227,6 +229,15 @@ control may come later). The defaults that ship with the kit:
 
 Set the tier as you write each page; when a page draws on several, use the **most**
 sensitive. Default to `default` only when nothing sensitive is involved.
+
+Two inheritance rules apply, and `lint` reports a breach of either as an ERROR:
+
+- A page carries at least the highest tier among the raw sources its `## Sources` section
+  cites, as `classify` recorded them in `.ingest/sensitivity.tsv`.
+- A derived page carries at least the highest tier of the pages in its `derived_from`.
+
+`scripts/reclassify` raises any page that has fallen below either. It only ever raises;
+lowering a tier exposes content, so that stays a human decision.
 
 ### Page types
 

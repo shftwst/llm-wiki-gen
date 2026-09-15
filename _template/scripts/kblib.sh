@@ -10,6 +10,7 @@
 _KB_TYPES_TSV="$KB_DIR/.schema/page-types.tsv"
 _KB_TIERS_TSV="$KB_DIR/.schema/privilege-tiers.tsv"
 _KB_IGNORE="$KB_DIR/.ingestignore"
+_KB_SENSITIVITY="$KB_DIR/.ingest/sensitivity.tsv"
 
 _kb_req()       { [ -f "$1" ] || { echo "kblib: missing $1" >&2; exit 1; }; }   # hard-error, lazy
 _kb_types_raw() { _kb_req "$_KB_TYPES_TSV"; grep -v '^#' "$_KB_TYPES_TSV" | grep -vE '^[[:space:]]*$' || true; }
@@ -73,4 +74,62 @@ kb_dir_has_unsynced() {
     return 0
   done < <(find -L "$1" -type f -size 0 2>/dev/null)
   return 1
+}
+
+# Source sensitivity (.ingest/sensitivity.tsv) -------------------------------
+# scripts/classify tags each coverage item with a tier. These readers carry that tag through
+# to the pages written from those sources, so a page cannot sit below the sensitivity of what
+# it was written from. Shared by lint (which flags) and reclassify (which raises).
+
+# kb_page_sources <page-file>: raw/-relative paths cited in the page's "## Sources" section.
+kb_page_sources() {
+  sed -n '/^## Sources/,$p' "$1" 2>/dev/null \
+    | grep -oE 'raw/[^ )]+' \
+    | sed -E 's#^raw/##; s#/+$##' \
+    | grep -v '^$' \
+    | sort -u || true
+}
+
+# kb_source_tier <raw-relative-path>: tiers of every sensitivity row covering this path. A row
+# covers a path when the path equals the row's item or sits underneath it, so a page citing one
+# file inside a classified group inherits the group's tier. The item's trailing "(note)" is not
+# part of the path.
+kb_source_tier() {
+  [ -f "$_KB_SENSITIVITY" ] || return 0
+  awk -F'\t' -v p="$1" '
+    /^#/ || /^[[:space:]]*$/ { next }
+    { item = $1; sub(/ +\(.*$/, "", item)
+      if (p == item || index(p, item "/") == 1) print $2 }' "$_KB_SENSITIVITY"
+}
+
+# kb_page_source_tier <page-file>: the highest tier among the page's cited sources, or nothing
+# if no cited source is classified. Unclassified sources are silent: absence of a tag is not
+# evidence of low sensitivity, and guessing here would produce false errors.
+kb_page_source_tier() {
+  _best=""; _bestrank=-1
+  for _p in $(kb_page_sources "$1"); do
+    for _t in $(kb_source_tier "$_p"); do
+      kb_tier_valid "$_t" || continue
+      _r="$(kb_tier_rank "$_t")"; [ -n "$_r" ] || continue
+      if [ "$_r" -gt "$_bestrank" ]; then _bestrank="$_r"; _best="$_t"; fi
+    done
+  done
+  [ -n "$_best" ] && printf '%s' "$_best"
+  return 0
+}
+
+# kb_page_derived_tier <page-file> <wiki-dir>: the highest tier among the pages listed in this
+# page's derived_from. Same rule lint's "privilege inheritance" section checks; lint keeps its
+# own loop there so it can name the specific input in the error, this returns just the maximum.
+kb_page_derived_tier() {
+  _best=""; _bestrank=-1
+  for _d in $(grep -E '^derived_from:' "$1" 2>/dev/null | grep -oE '\[\[[^]]+\]\]' | sed -E 's/\[\[([^]|#]+).*/\1/'); do
+    _df="$(find "$2" -name "${_d}.md" 2>/dev/null | head -1)"; [ -n "$_df" ] || continue
+    _t="$(awk -F': ' '/^privilege:/{sub(/^[^:]*: */,"");print;exit}' "$_df")"
+    kb_tier_valid "$_t" || continue
+    _r="$(kb_tier_rank "$_t")"; [ -n "$_r" ] || continue
+    if [ "$_r" -gt "$_bestrank" ]; then _bestrank="$_r"; _best="$_t"; fi
+  done
+  [ -n "$_best" ] && printf '%s' "$_best"
+  return 0
 }

@@ -120,6 +120,22 @@ for f in $pages; do
   done
 done
 
+# --- source sensitivity (a page carries the max tier of the sources it cites) --
+# classify tags each raw source in .ingest/sensitivity.tsv. A page written from a
+# personal-sensitive source must not sit at default, or publish stages it into a role that was
+# never cleared for the underlying document. Sources with no tag are skipped, not guessed at.
+sect "source sensitivity"
+for f in $pages; do
+  rel=${f#"$WIKI"/}; ty="$(fm "$f" type)"
+  [ "$(kb_type_class "$ty")" = content ] || continue
+  pv="$(fm "$f" privilege)"; [ -n "$pv" ] || continue
+  kb_tier_valid "$pv" || continue
+  stier="$(kb_page_source_tier "$f")"; [ -n "$stier" ] || continue
+  if [ "$(kb_tier_rank "$stier")" -gt "$(kb_tier_rank "$pv")" ]; then
+    err "$rel: privilege '$pv' is below its sources ('$stier'): a page inherits the maximum tier of the sources it cites (raise it, or run scripts/reclassify)"
+  fi
+done
+
 # --- style tells -------------------------------------------------------------
 sect "style"
 bv=$(grep -rhoiwE 'crucial|robust|comprehensive|multifaceted|seamless|vibrant|boasts|nestled|testament|showcase[sd]?|underscore[sd]?|pivotal|delve|tapestry|renowned|groundbreaking|leverage[sd]?|intricate|meticulous' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')

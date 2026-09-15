@@ -63,7 +63,6 @@ contributors can't alter or delete it.
 ./scripts/sweep --dry-run  # show what would move; move nothing
 ```
 
-It runs automatically as the first step of `ingest` (disable with `--no-sweep`).
 Promotion is a recorded decision rather than a move because the server that receives captures
 is deliberately given no write access to any KB. Sweep, which already holds write access to
 `raw/`, is what acts on the decision. A missing or unreadable sidecar reads as "not promoted",
@@ -71,12 +70,13 @@ so the failure direction is always "stays in the queue". After a move the sideca
 to `capture/.done/`, which keeps the provenance next to the decision and stops a re-run
 reconsidering it. Reading promotions needs `jq`; without it sweep does `inbox/` and says so.
 
+It runs automatically as the first step of `ingest` (disable with `--no-sweep`).
 Name collisions never overwrite a `raw/` source, the incoming item is timestamp-suffixed.
 Non-empty `.ingestignore` matches move to `junk/`. A zero-byte file, or a directory containing one, is left in place and flagged instead of moved, since it may be a real download still in flight that a move would lose.
 
-## `lint`: mechanical QA
 `PINKY_CAPTURE_DIR` overrides the queue location (default: `capture/` beside the KB).
 
+## `lint`: mechanical QA
 
 Structural, style, and privacy checks over `wiki/`. No LLM, no cost.
 
@@ -128,8 +128,31 @@ are marked `business` / `personal`). Fail-safe: an unmatched item falls to a con
 CLASSIFY_FLOOR=default ./scripts/classify   # change the fail-safe floor
 ```
 
-This is Phase 1 of the sensitivity-aware routing design ([`docs/routing.md`] in the kit).
-It only tags; nothing routes on the tag yet. Run it after `--map` populates the frontier.
+This is Phase 1 of the sensitivity-aware routing design ([`docs/routing.md`] in the kit). Run
+it after `--map` populates the frontier. Model routing still does not read the tag, but page
+privilege now does: `lint` and `reclassify` below hold each page at or above the sensitivity
+of the sources it cites.
+
+## `reclassify`: raise pages to the tier their sources require
+
+A page written from a `personal-sensitive` source must not sit at `default`, or `publish`
+stages it into a role that was never cleared for the underlying document and an MCP credential
+reads it that should not. Two rules, both reported by `lint` as errors:
+
+- **source sensitivity** — a page carries at least the highest tier among the raw sources its
+  `## Sources` section cites, per `.ingest/sensitivity.tsv`. A row covers a path when the path
+  equals it or sits underneath it, so citing one file inside a classified folder inherits the
+  folder's tier. A source with no row is skipped, never guessed at.
+- **derived_from** — a derived page carries at least the highest tier of its input pages.
+
+```sh
+./scripts/reclassify            # raise under-tiered pages, then commit
+./scripts/reclassify --dry-run  # show what would change; change nothing
+```
+
+It only ever **raises**. Lowering a tier exposes content, so that stays a human decision.
+Raising one page can put a page derived from it below its inputs, so it repeats until nothing
+changes. Run `classify` first if the sensitivity ledger is stale.
 
 ## `publish`: role-filtered views for the web
 

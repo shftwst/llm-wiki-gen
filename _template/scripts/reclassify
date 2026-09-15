@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# reclassify — raise any wiki page sitting below the tier its sources or its inputs require.
+#
+#   ./scripts/reclassify            raise under-tiered pages, then commit
+#   ./scripts/reclassify --dry-run  show what would change; change nothing
+#
+# It only ever RAISES a tier. Lowering one exposes content, so it is never automatic: that
+# stays a human decision. Two rules, the same ones `lint` reports:
+#
+#   - source sensitivity  a page carries at least the highest tier among the raw sources its
+#                         "## Sources" section cites, as classified in .ingest/sensitivity.tsv
+#   - derived_from        a derived page carries at least the highest tier of its input pages
+#
+# Raising one page can put a page derived from it below its inputs, so it repeats until nothing
+# changes. Run `scripts/classify` first if the sensitivity ledger is stale; this reads it, and
+# a source with no row in it is skipped rather than guessed at.
+
+set -eu
+
+DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
+
+KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$KB_DIR/scripts/kblib.sh"   # tier vocabulary + the sensitivity and derived_from readers
+WIKI="$KB_DIR/wiki"
+[ -d "$WIKI" ] || { echo "reclassify: no wiki/ yet."; exit 0; }
+
+MAX_PASSES=10   # a fixed point is reached in far fewer; this only bounds a pathological graph
+
+# raise_tier <file> <tier>: rewrite the privilege line inside the frontmatter only.
+raise_tier() {
+  awk -v t="$2" '
+    NR==1 && /^---/      { print; infm=1; next }
+    infm && /^---/       { infm=0; print; next }
+    infm && /^privilege:/{ print "privilege: " t; next }
+                         { print }' "$1" > "$1.reclassify.tmp"
+  mv "$1.reclassify.tmp" "$1"
+}
+
+# higher <tier-a> <tier-b>: print whichever ranks higher (either may be empty).
+higher() {
+  [ -n "$1" ] || { printf '%s' "$2"; return 0; }
+  [ -n "$2" ] || { printf '%s' "$1"; return 0; }
+  if [ "$(kb_tier_rank "$1")" -ge "$(kb_tier_rank "$2")" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
+}
+
+total=0; names=""
+pass=0
+while [ "$pass" -lt "$MAX_PASSES" ]; do
+  pass=$((pass + 1)); changed=0
+  for f in $(find "$WIKI" -name '*.md' | sort); do
+    rel=${f#"$WIKI"/}
+    pv="$(awk -F': ' '/^privilege:/{sub(/^[^:]*: */,"");print;exit}' "$f")"
+    [ -n "$pv" ] || continue                      # no privilege set: lint's error, not ours
+    kb_tier_valid "$pv" || continue
+
+    want="$(higher "$(kb_page_source_tier "$f")" "$(kb_page_derived_tier "$f" "$WIKI")")"
+    [ -n "$want" ] || continue
+    [ "$(kb_tier_rank "$want")" -gt "$(kb_tier_rank "$pv")" ] || continue
+
+    if [ "$DRY" -eq 1 ]; then echo "reclassify: [dry-run] $rel: $pv → $want"
+    else raise_tier "$f" "$want"; echo "reclassify: raised $rel: $pv → $want"; fi
+    names="$names$rel ($pv → $want)
+"
+    changed=$((changed + 1)); total=$((total + 1))
+  done
+  [ "$changed" -eq 0 ] && break
+  [ "$DRY" -eq 1 ] && break    # nothing was written, so a second pass would repeat itself
+done
+
+if [ "$total" -eq 0 ]; then echo "reclassify: every page is at or above the tier its sources require."; exit 0; fi
+if [ "$DRY" -eq 1 ]; then echo "reclassify: [dry-run] $total page(s) would be raised. Nothing changed."; exit 0; fi
+
+if command -v git >/dev/null 2>&1 && git -C "$KB_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  git -C "$KB_DIR" add -A -- wiki >/dev/null 2>&1 || true
+  git -C "$KB_DIR" commit -q -m "Reclassify: raise $total page(s) to the tier their sources require" \
+    -m "$names" >/dev/null 2>&1 || echo "reclassify: (nothing committed)"
+fi
+echo "reclassify: raised $total page(s) in $pass pass(es)."

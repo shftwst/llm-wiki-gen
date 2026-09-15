@@ -1,7 +1,8 @@
 # scripts/: mechanical ingest
 
 These ship inside the KB so it stays self-contained and splittable. Detection is a pure
-script (no LLM, no cost); the actual ingest invokes Claude Code headlessly.
+script (no LLM, no cost); the actual ingest hands a prompt to a headless agent (Claude Code by
+default; see *Choosing the agent* under `ingest`).
 
 > **Run these where `raw/` actually resolves, your real machine, not a container or
 > remote sandbox.** Sources are often symlinks to local mounts (shared drives, OneDrive,
@@ -324,11 +325,38 @@ when it finishes; **`log.md` is the durable record either way** (what was ingest
 `--output-format stream-json` rendered readable through `jq`; install `jq` for clean output,
 or you'll see raw JSON. `--auto` stays quiet and logs to `.ingest/auto.log`.
 
-If `claude` isn't on your PATH: `CLAUDE_BIN=/full/path/to/claude ./scripts/ingest`.
+### Choosing the agent (`KB_AGENT`)
+
+`ingest` and `query` build a prompt and hand it to whichever headless agent `KB_AGENT` names;
+the driver lives in `scripts/agentlib.sh`. The prompt and the KB's `AGENTS.md` are the same for
+every agent, so the wiki comes out the same way.
+
+| `KB_AGENT` | Runs | Notes |
+|---|---|---|
+| `claude` (default) | `claude -p --permission-mode ... --model M <prompt>` | Live `--watch` steps and the cost ledger via `stream-json` + `jq`. The `guard-raw` hook applies. |
+| `hermes` | `hermes -z [-m M] <prompt>` | One-shot: loads `AGENTS.md` from the KB, approvals already bypassed (`--auto` changes nothing), prints only the final reply. `--watch` uses `hermes chat --oneshot --yolo -q` instead, which shows tool previews. No cost figure. |
+| `cmd` | `sh -c "$KB_AGENT_CMD"` with the prompt on stdin | Any other headless agent, e.g. `KB_AGENT_CMD='codex exec --full-auto -'`. No cost figure. |
+
+```sh
+KB_AGENT=hermes ./scripts/ingest                        # read pass through Hermes
+KB_AGENT=hermes KB_MODEL=anthropic/claude-sonnet-4.6 ./scripts/query "what rate did we agree?"
+KB_AGENT=cmd KB_AGENT_CMD='codex exec --full-auto -' ./scripts/ingest --deepen
+KB_AGENT_BIN=/full/path/to/hermes KB_AGENT=hermes ./scripts/ingest   # binary not on PATH
+```
+
+`KB_AGENT_BIN` overrides the binary and `KB_MODEL` the model for any driver; `CLAUDE_BIN` and
+`CLAUDE_MODEL` still work for `claude`. `--dry-run` prints the exact command a run would use.
+
+> Only the `claude` driver has a hook that physically blocks writes under `raw/` (see
+> `guard-raw`). With `hermes` or `cmd`, `raw/` is protected by the rule in `AGENTS.md` and by
+> whatever sandbox that agent provides; the wrapper prints a one-line reminder at the start of
+> each run. If the sources must not be touched under any circumstances, mount or share `raw/`
+> read-only for that agent.
 
 ### Cost & model
 
-When `jq` is installed, each run appends a row to `.ingest/cost.tsv`:
+When the agent reports a cost (`claude` with `jq` installed), each run appends a row to
+`.ingest/cost.tsv`:
 `date · cost_usd · turns · duration_ms · sources · mode · model` (the model actually used,
 read from the run's init event), and prints the run cost plus a running cumulative total.
 The ledger is committed, so cost history travels with the KB:
@@ -337,10 +365,11 @@ The ledger is committed, so cost history travels with the KB:
 awk -F'\t' '$1!~/^#/{s+=$2} END{printf "total $%.4f\n", s}' .ingest/cost.tsv
 ```
 
-The ingest model defaults to **`claude-opus-4-8`**. Override per run with `CLAUDE_MODEL`:
+The `claude` driver defaults to **`claude-opus-4-8`**; the other drivers use the agent's own
+configured model. Override per run with `KB_MODEL` (`CLAUDE_MODEL` still works for `claude`):
 
 ```sh
-CLAUDE_MODEL=claude-sonnet-4-6 ./scripts/ingest   # cheaper/faster for small batches
+KB_MODEL=claude-sonnet-4-6 ./scripts/ingest   # cheaper/faster for small batches
 ```
 
 On success it advances `.ingest/manifest.tsv` and commits. The manifest only advances when
@@ -360,7 +389,8 @@ prose hygiene, thin-page). `stats` counts them.
 
 ## `query`: ask the wiki, and learn from the asking
 
-`scripts/query "<question>"` answers from the wiki via headless Claude Code and, when the answer
+`scripts/query "<question>"` answers from the wiki via the headless agent (`KB_AGENT`, Claude Code
+by default; see *Choosing the agent* above) and, when the answer
 is durable (a synthesis across pages, not a one-fact lookup), files it back as a cited
 `analysis` page so the work compounds. It is the read-side twin of `ingest`; the file-back logic
 lives in the Query workflow in `AGENTS.md`, so an interactive session behaves the same.
@@ -384,7 +414,8 @@ a cadence; runs where `raw/` hasn't changed do nothing (detection is free). Repl
 `KBPATH` with this KB's absolute path.
 
 > Auto mode runs Claude Code with `--permission-mode bypassPermissions` so it can write
-> unattended. Only enable it when you're comfortable with what supervised runs produce.
+> unattended (Hermes one-shot mode already bypasses approvals, so `--auto` changes nothing there).
+> Only enable it when you're comfortable with what supervised runs produce.
 
 ### macOS (launchd)
 

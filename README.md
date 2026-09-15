@@ -169,6 +169,22 @@ Plain files, nothing exotic:
 - `.ingest/` bookkeeping: what's been read, what's covered, what each run cost
 - `AGENTS.md` the AI's full instructions · `STYLE.md` the writing rules · `log.md` a running record
 
+## Choosing the agent
+
+The scripts build a prompt and hand it to a headless agent; the wiki conventions live in the base's
+own `AGENTS.md`, so any agent that reads that file produces the same wiki. Claude Code is the
+default. Set `KB_AGENT` to use another:
+
+```sh
+KB_AGENT=hermes ./scripts/ingest                              # Hermes Agent, one-shot mode
+KB_AGENT=hermes ./scripts/query "who is our accountant?"
+KB_AGENT=cmd KB_AGENT_CMD='codex exec --full-auto -' ./scripts/ingest   # anything that reads a prompt on stdin
+```
+
+`KB_MODEL` picks the model and `KB_AGENT_BIN` the binary. Only the Claude Code driver has a hook
+that physically blocks writes under `raw/`; with another agent the sources are protected by the
+rule in `AGENTS.md` and that agent's own sandbox, so share `raw/` read-only if that matters.
+
 Every script and flag, in detail: [`_template/scripts/README.md`](_template/scripts/README.md).
 
 ## License

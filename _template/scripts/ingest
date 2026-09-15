@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ingest — ingest sources via headless Claude Code, with progressive-deepening
-# passes (iterative deepening / anytime). Stop after any pass; resume later.
+# ingest — ingest sources via a headless agent, with progressive-deepening passes (iterative
+# deepening / anytime). Stop after any pass; resume later.
 #
 #   ./scripts/ingest             Pass 1 "read": sweep, scan, read HIGH-value docs
 #   ./scripts/ingest --map       Pass 0 "map": cheap skeleton + build coverage frontier
@@ -18,21 +18,21 @@
 # map → read → deepen → deepen … value-ordered (notes.md priorities, then type heuristic),
 # with read state memoized so no document is read twice. Flags combine.
 #
-# Set CLAUDE_BIN / CLAUDE_MODEL to override the binary / model (default claude-opus-4-8).
-# Cost per run is appended to .ingest/cost.tsv when jq is available.
+# The agent is chosen by KB_AGENT (claude, the default; hermes; or cmd with KB_AGENT_CMD), the
+# model by KB_MODEL; see scripts/agentlib.sh. CLAUDE_BIN / CLAUDE_MODEL still work for claude.
+# Cost per run is appended to .ingest/cost.tsv when the agent reports one (claude with jq).
 # --watch shows full lines by default; set WATCH_MAXLEN=N to cap each line at N characters.
 
 set -euo pipefail
 
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$KB_DIR/scripts/agentlib.sh"
 SCAN="$KB_DIR/scripts/scan"
 SWEEP="$KB_DIR/scripts/sweep"
 PENDING="$KB_DIR/.ingest/pending.md"
 COVERAGE="$KB_DIR/.ingest/coverage.tsv"
 QA="$KB_DIR/.ingest/qa.tsv"
 WIKI="$KB_DIR/wiki"
-COST_TSV="$KB_DIR/.ingest/cost.tsv"
-COST_HEADER=$'# cost.tsv — per-run ingest cost ledger (appended by scripts/ingest).\n# Columns: date\tcost_usd\tturns\tduration_ms\tsources\tmode\tmodel'
 
 DRY_RUN=0; AUTO=0; WATCH=0; SWEEP_ENABLED=1; MODE=read; BUDGET=""; FRESH=0; SAMPLE=""
 modeset() { case "$MODE" in read) MODE="$1";; "$1") ;; *) echo "ingest: --$1 conflicts with --$MODE" >&2; exit 1;; esac; }
@@ -56,13 +56,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-CLAUDE_BIN="${CLAUDE_BIN:-claude}"
-MODEL="${CLAUDE_MODEL:-claude-opus-4-8}"
-# Both modes auto-accept file writes; raw/ stays protected regardless by the guard-raw PreToolUse
-# hook (.claude/settings.json), which blocks any edit/delete/move/chmod under raw/ even under bypass.
-if [ "$AUTO" -eq 1 ]; then PERM=(--permission-mode bypassPermissions); else PERM=(--permission-mode acceptEdits); fi
-
-HAVE_JQ=0; command -v jq >/dev/null 2>&1 && HAVE_JQ=1
+# Resolves AGENT / AGENT_BIN / MODEL from KB_AGENT etc. With claude, both --auto and the default
+# auto-accept file writes; raw/ stays protected regardless by the guard-raw PreToolUse hook
+# (.claude/settings.json), which blocks any edit/delete/move/chmod under raw/ even under bypass.
+kb_agent_init
 # Git is optional (may be absent on the client). Every git call is gated on HAVE_GIT; without it
 # the manifest still advances (file-based) and changes are saved, just not committed.
 HAVE_GIT=0; command -v git >/dev/null 2>&1 && git -C "$KB_DIR" rev-parse --git-dir >/dev/null 2>&1 && HAVE_GIT=1
@@ -76,20 +73,6 @@ state_sig() {
       printf '=== %s ===\n' "$f"; cat "$f" 2>/dev/null || true
     done ) | _sig_hash
 }
-JQ_FILTER='
-def short(s): (s // "" | tostring) as $t | (env.WATCH_MAXLEN // "0" | tonumber) as $m
-  | if $m > 0 and ($t|length) > $m then $t[0:$m] + "…" else $t end;
-if .type=="system" and .subtype=="init" then "▶ start (model \(.model // "?"))"
-elif .type=="assistant" then
-  ( .message.content[]? |
-    if .type=="tool_use" then "  ⚙ \(.name) \(short(.input.file_path // .input.path // .input.command // .input.pattern // ""))"
-    elif .type=="text" and (.text|length>0) then "» \(short(.text))"
-    else empty end )
-elif .type=="result" then "✓ \(.subtype // "done")\(if .total_cost_usd then "  ($\(.total_cost_usd))" else "" end)"
-else empty end
-'
-_render() { if [ "$WATCH" -eq 1 ] && command -v jq >/dev/null 2>&1; then jq -r "$JQ_FILTER"; else cat; fi; }
-
 BUDGET_CLAUSE=""
 [ -n "$BUDGET" ] && BUDGET_CLAUSE=" Spend roughly \$$BUDGET this pass, then stop; the next run resumes the frontier."
 SAMPLE_CLAUSE=""
@@ -158,23 +141,16 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "ingest: [dry-run] mode=$MODE$FRESHLBL${SAMPLE:+ sample=$SAMPLE}${BUDGET:+ budget=\$$BUDGET}. Would run, in $KB_DIR:"
-  if [ "$HAVE_JQ" -eq 1 ]; then
-    echo "  $CLAUDE_BIN -p ${PERM[*]} --model $MODEL --output-format stream-json --verbose \"<$MODE prompt>\""
-    echo "  → ${WATCH:+live steps, }final summary, and append cost to .ingest/cost.tsv"
-  else
-    echo "  $CLAUDE_BIN -p ${PERM[*]} --model $MODEL \"<$MODE prompt>\"   (jq absent: plain text, no cost ledger)"
-  fi
+  echo "  $(kb_agent_describe "$MODE prompt")"
   echo "  then: scripts/scan --accept; commit if git is present"
   echo "ingest: [dry-run] no changes made."
   exit 0
 fi
 
-command -v "$CLAUDE_BIN" >/dev/null 2>&1 \
-  || { echo "ingest: '$CLAUDE_BIN' not found. Set CLAUDE_BIN=/path/to/claude." >&2; exit 127; }
-[ "$HAVE_JQ" -eq 0 ] && echo "ingest: jq not found — no live steps or cost ledger (install jq to enable)." >&2
+kb_agent_check
 
 SOURCES_N="$(grep -cE '^- ' "$PENDING" 2>/dev/null || true)"
-echo "ingest: $MODE pass$FRESHLBL${SAMPLE:+ (sample $SAMPLE)}${BUDGET:+ (budget \$$BUDGET)} via $CLAUDE_BIN ..."
+echo "ingest: $MODE pass$FRESHLBL${SAMPLE:+ (sample $SAMPLE)}${BUDGET:+ (budget \$$BUDGET)} via $AGENT ..."
 
 # Option 2: preserve any pending human edits to wiki/ and notes.md as their own commit first, so a
 # hand edit is never silently overwritten by the agent or folded into the ingest commit (git only).
@@ -184,43 +160,12 @@ if [ "$HAVE_GIT" -eq 1 ] && [ -n "$(git -C "$KB_DIR" status --porcelain -- wiki 
 fi
 SIG_BEFORE="$(state_sig || true)"
 
-rc=0
-if [ "$HAVE_JQ" -eq 1 ]; then
-  STREAM_TMP="$(mktemp)"; trap 'rm -f "$STREAM_TMP"' EXIT
-  set +e
-  if [ "$WATCH" -eq 1 ]; then
-    ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" --model "$MODEL" --output-format stream-json --verbose "$PROMPT" ) \
-      | tee "$STREAM_TMP" | jq -r "$JQ_FILTER"
-    rc="${PIPESTATUS[0]}"
-  else
-    ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" --model "$MODEL" --output-format stream-json --verbose "$PROMPT" ) > "$STREAM_TMP"
-    rc=$?
-    jq -r 'select(.type=="result") | .result // empty' "$STREAM_TMP" 2>/dev/null || true
-  fi
-  set -e
-  COST="$(jq -r 'select(.type=="result") | .total_cost_usd // empty' "$STREAM_TMP" 2>/dev/null | tail -1 || true)"
-  TURNS="$(jq -r 'select(.type=="result") | .num_turns // empty'      "$STREAM_TMP" 2>/dev/null | tail -1 || true)"
-  DUR="$(jq -r 'select(.type=="result") | .duration_ms // empty'      "$STREAM_TMP" 2>/dev/null | tail -1 || true)"
-  # the model actually used (from the init event), falling back to the requested one
-  MODEL_USED="$(jq -r 'select(.type=="system" and .subtype=="init") | .model // empty' "$STREAM_TMP" 2>/dev/null | head -1 || true)"
-  [ -z "$MODEL_USED" ] && MODEL_USED="$MODEL"
-  if [ -n "$COST" ]; then
-    [ -f "$COST_TSV" ] || printf '%s\n' "$COST_HEADER" > "$COST_TSV"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%F)" "$COST" "${TURNS:-}" "${DUR:-}" "$SOURCES_N" "$MODE" "$MODEL_USED" >> "$COST_TSV"
-    TOTAL="$(awk -F'\t' '$1 !~ /^#/ {s+=$2} END{printf "%.4f", s+0}' "$COST_TSV")"
-    printf 'ingest: cost $%s (%s turns, %s pass, %s) — cumulative $%s\n' "$COST" "${TURNS:-?}" "$MODE" "$MODEL_USED" "$TOTAL"
-  else
-    echo "ingest: no cost field in result — cost ledger not updated." >&2
-  fi
-else
-  ( cd "$KB_DIR" && "$CLAUDE_BIN" -p "${PERM[@]}" --model "$MODEL" "$PROMPT" )
-  rc=$?
-fi
-
+set +e; kb_agent_run "$PROMPT"; rc=$?; set -e
 if [ "$rc" -ne 0 ]; then
   echo "ingest: $MODE pass failed (exit $rc) — manifest NOT advanced, no commit." >&2
   exit "$rc"
 fi
+kb_cost_record "$SOURCES_N" "$MODE"
 
 # Guard against silent no-ops (incl. a cancelled run — Claude Code exits 0 on cancel). Git-free:
 # compare a content signature of the agent-writable state from before the run.

@@ -72,7 +72,9 @@ Much of the scaffolding is already here:
   sensitivity classification, but applied to *output pages*, not input documents.
 - **`coverage.tsv`** is the per-document ledger where an input sensitivity tag can live.
 - **`value` tier** is the difficulty and importance proxy.
-- **`CLAUDE_BIN` and `CLAUDE_MODEL`** already make the model and binary swappable per run.
+- **`KB_AGENT`, `KB_AGENT_BIN` and `KB_MODEL`** already make the agent, binary and model
+  swappable per run (`scripts/agentlib.sh`); `KB_AGENT=cmd` can hand the prompt to a local
+  harness.
 
 One distinction to keep straight: **page `privilege` is per output page; source sensitivity is
 per input document.** They are related (a page's privilege is the most sensitive of the
@@ -118,8 +120,8 @@ A KB-level config (a routing policy) maps:
 - `sensitivity -> allowed pool` (for example, `personal-sensitive -> local-only`).
 - `value or difficulty -> model` within that pool.
 
-`ingest` and `verify` read each item's sensitivity and value, then pick `CLAUDE_BIN` and
-`CLAUDE_MODEL` accordingly.
+`ingest` and `verify` read each item's sensitivity and value, then pick `KB_AGENT` and
+`KB_MODEL` accordingly.
 
 The hard case is **sensitive and hard**: constrained to local, but a local model may be too
 weak. The escape hatch is **redact, then send**: strip the identifiers from the document and

@@ -48,6 +48,14 @@ case "${1:-}" in
 esac
 
 [ -d "$RAW" ] || { echo "convert: no raw/ yet."; exit 0; }
+
+# Say so before walking: a living source that does not resolve here makes the corpus look empty
+# instead of unreachable, and a clean "0 converted" is the worst possible way to find out.
+unresolved=0
+for _u in $(kb_unresolved_sources "$RAW"); do
+  echo "convert: raw/$_u does not resolve here, so its sources are invisible. Run where the mount exists (not in a container)." >&2
+  unresolved=$((unresolved + 1))
+done
 mkdir -p "$OUT"
 [ -f "$INDEX" ] || printf '%s\n' "$INDEX_HEADER" > "$INDEX"
 
@@ -146,10 +154,13 @@ for f in $files; do
 done
 
 if [ "$DRY" -eq 1 ]; then
-  echo "convert: [dry-run] $converted to convert, $unchanged unchanged, $skipped skipped. Nothing written."
+  m="convert: [dry-run] $converted to convert, $unchanged unchanged, $skipped skipped"
+  [ "$unresolved" -gt 0 ] && m="$m; $unresolved living source(s) UNREACHABLE here"
+  echo "$m. Nothing written."
   exit 0
 fi
 msg="convert: $converted converted, $unchanged unchanged"
+[ "$unresolved" -gt 0 ] && msg="$msg; $unresolved living source(s) UNREACHABLE here"
 [ "$skipped" -gt 0 ] && msg="$msg, $skipped skipped (missing tools)"
 [ "$scans"   -gt 0 ] && msg="$msg; $scans PDF(s) have no text layer (status=scanned — OCR or a vision pass)"
 echo "$msg."

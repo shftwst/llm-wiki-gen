@@ -142,3 +142,18 @@ kb_page_derived_tier() {
   [ -n "$_best" ] && printf '%s' "$_best"
   return 0
 }
+
+# Living sources (unresolved symlinks) --------------------------------------
+# kb_unresolved_sources <raw-dir>: print each top-level entry that is a symlink not resolving
+# here, one per line. A living source points into a mount, so on a machine without that mount,
+# or inside a container where it points outside the bind, it dangles. `find -L` then walks
+# nothing and the corpus reads as empty rather than unreachable, which is the difference
+# between "nothing to do" and "everything is invisible".
+kb_unresolved_sources() {
+  [ -d "$1" ] || return 0
+  for _e in "$1"/*; do
+    [ -L "$_e" ] || continue
+    [ -e "$_e" ] && continue
+    printf '%s\n' "${_e##*/}"
+  done
+}

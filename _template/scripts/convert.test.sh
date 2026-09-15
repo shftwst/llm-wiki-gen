@@ -107,4 +107,21 @@ out="$(run sub/addendum.docx 2>/dev/null)"
 printf '%s\n' "$out" | grep -q "sub/addendum.docx → " || fail "single-path convert failed: $out"
 [ "$(field sub/addendum.docx 4)" = pandoc ] || fail "single-path row not written"
 
+# --- a living source that does not resolve is called out, not silently skipped ---------------
+# find -L walks nothing through a dangling symlink, so the corpus reads as empty rather than
+# unreachable. A clean "0 converted" is the worst way to discover a mount is missing.
+ln -s /nonexistent/living-mount "$KB/raw/living-mount"
+out="$(run --dry-run 2>&1)"
+printf '%s\n' "$out" | grep -q "raw/living-mount does not resolve here" || fail "unreachable source not reported: $out"
+printf '%s\n' "$out" | grep -q "UNREACHABLE here" || fail "summary did not flag it: $out"
+out="$(run 2>&1)"
+printf '%s\n' "$out" | grep -q "UNREACHABLE here" || fail "real run did not flag it: $out"
+
+# a symlink that DOES resolve is ordinary and says nothing
+mkdir -p "$TMP/real-mount"; printf 'zipbytes' > "$TMP/real-mount/linked.docx"
+ln -s "$TMP/real-mount" "$KB/raw/good-mount"
+out="$(run 2>&1)"
+printf '%s\n' "$out" | grep -q "raw/good-mount does not resolve" && fail "a resolving symlink was flagged"
+[ "$(field good-mount/linked.docx 4)" = pandoc ] || fail "content behind a live symlink not converted"
+
 echo "PASS"

@@ -228,8 +228,14 @@ Everything for a full-coverage install, about 330 MB on Debian:
 apt-get install -y pandoc poppler-utils xlsx2csv catdoc
 ```
 
-Run it where `raw/` actually resolves, the same rule as `ingest`: inside a container a
-symlinked living source is a dangling link and converts nothing.
+Run it where `raw/` actually resolves, the same rule as `ingest`. A living source is a symlink
+into a mount, so inside a container, or on a machine without that mount, it dangles and the
+corpus reads as empty rather than unreachable. `convert` now names any such source and counts
+it in the summary, rather than reporting a clean zero.
+
+That is why the converters belong on the machine that runs `ingest`, not in the deployment
+images. A containerised conversion works only where every source sits physically under
+`KB_ROOT`, and silently sees nothing where one is a symlink out of it.
 
 ## `publish`: role-filtered views for the web
 

@@ -111,10 +111,15 @@ handful.
 
 - `update-kit --check` refreshes nothing and reports whether this base is behind, which is what
   the staleness notice in `ingest` and `lint` calls.
-- Pinky wraps both for a whole deployment: `./pinky update-kb <kb>`, `./pinky update-kb --all`
-  to walk every base under `KB_ROOT`, and `./pinky update-kb --check` to list which are behind
-  and by how much. It runs the base's own `update-kit` inside the ops container, which already
-  carries git, so the host needs no checkout.
+- Pinky wraps it for a whole deployment under the same name, because it is the same operation:
+  `./pinky update-kit <kb>`, `./pinky update-kit --all` to walk every base under `KB_ROOT`, and
+  `./pinky update-kit --check` to list which are behind. It runs each base's own
+  `scripts/update-kit` inside the ops container, which already carries git, so the host needs no
+  checkout.
+
+  One name, deliberately. An earlier draft called pinky's wrapper `update-kb`, which differs
+  from `update-kit` by a letter and means nearly the same thing, and the first person to read it
+  asked which was which. The wrapper should read as a wrapper, not as a second thing to learn.
 
 The kit version is pinned per base in its own `.kit`, independently of `PINKY_VERSION`. Two
 bases can sit on different kit versions on purpose, which is how you update one, watch an
@@ -131,6 +136,17 @@ It also performs a one-time migration, so bases created before this design conve
 when a base has no `CHARTER.md` and its `AGENTS.md` still carries a `## Charter` section, the
 section is lifted into `CHARTER.md` first, and only then is `AGENTS.md` refreshed. A base that
 has already converted is left alone.
+
+### Updating the updater
+
+`update-kit` is itself kit-owned, so a refresh rewrites the script while it is running. Bash
+reads a script incrementally rather than loading it whole, so overwriting it in place partway
+through leaves the shell executing whatever now sits at that byte offset. The failure is a
+one-off, looks like nothing else, and is very hard to diagnose after the fact.
+
+It has to avoid editing the running file: either copy itself to a temporary location and re-exec
+from there before touching anything, or write every replacement through a rename so the running
+inode is never modified. Either is fine; doing neither is not.
 
 ## Never overwrite a file somebody edited
 

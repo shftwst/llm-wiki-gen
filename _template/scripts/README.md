@@ -233,6 +233,10 @@ symlinked living source is a dangling link and converts nothing.
 
 ## `publish`: role-filtered views for the web
 
+The KB title is free text and lands in two structured places, the role landing page's YAML
+frontmatter and Quartz's config, so it is escaped as a quoted scalar in both. A title like
+`Acme Ltd: Operations` would otherwise parse as a nested mapping rather than a string.
+
 Build a read-only, shareable view of the wiki for a role, including only the pages that role
 is cleared to see. Roles and their allowed privilege tiers live in `.publish/roles.tsv`; add
 a row to make a view for any role.

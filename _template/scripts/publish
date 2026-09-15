@@ -57,11 +57,21 @@ fm_relev() { awk -F': ' '/^relevance:/{print $2; exit}' "$1"; }
 # kb_title: the human title of this KB, inferred by the ingest and read here (publish runs no
 # LLM). Resolution order: $KB_TITLE override, then the overview's frontmatter `title:`, then
 # its first H1, then the AGENTS.md H1 (minus the schema suffix), then the folder name.
+# yaml_dq <string>: the string as a double-quoted YAML scalar. A KB title is free text: a colon
+# and a space make a bare scalar parse as a nested mapping instead of a string, a leading # is a
+# comment, and a quote or backslash breaks the quoted form. JSON string escaping is valid YAML,
+# and the same escaping suits the TypeScript config below.
+yaml_dq() {
+  printf '"%s"' "$(printf '%s' "$1" | tr -d '\n\r' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+}
+
 kb_title() {
   [ -n "${KB_TITLE:-}" ] && { printf '%s' "$KB_TITLE"; return; }
   ov="$WIKI/overview.md"
   if [ -f "$ov" ]; then
     t="$(awk -F': ' '/^title:/{sub(/^title: */,"");print;exit}' "$ov")"
+    # The overview's title may already be a quoted scalar; unwrap it so it is not quoted twice.
+    case "$t" in '"'*'"') t="${t#\"}"; t="${t%\"}";; "'"*"'") t="${t#\'}"; t="${t%\'}";; esac
     [ -n "$t" ] || t="$(grep -m1 '^# ' "$ov" | sed 's/^# *//')"
     [ -n "$t" ] && { printf '%s' "$t"; return; }
   fi
@@ -73,9 +83,11 @@ kb_title() {
 }
 
 # quartz_set_title: patch the cloned Quartz's site title so the header stops reading the stock
-# "Quartz" default. Strips quotes/backslashes so the title can't break the TS string literal.
+# "Quartz" default. The title is escaped rather than stripped: stripping silently mangled a
+# title containing a quote, and then the check below compared against the unstripped original
+# and warned that the patch had not taken when it had.
 quartz_set_title() {
-  T="$(printf '%s' "$1" | tr -d '"\\')"
+  Q="$(yaml_dq "$1")"; T="${Q%\"}"; T="${T#\"}"   # escaped body, without the wrapping quotes
   # Quartz v4: quartz.config.ts. Quartz v5: YAML (quartz.config.yaml overrides
   # quartz.config.default.yaml; patch whichever exists, preferring the override).
   if [ -f "$QZ/quartz.config.ts" ]; then
@@ -87,7 +99,7 @@ quartz_set_title() {
   else
     echo "publish: WARNING — no Quartz config found to set the title in" >&2; return 0
   fi
-  grep -qF "pageTitle: \"$1\"" "$cfg" || echo "publish: WARNING — pageTitle patch did not take; header will show the stock title" >&2
+  grep -qF "pageTitle: $Q" "$cfg" || echo "publish: WARNING — pageTitle patch did not take; header will show the stock title" >&2
 }
 
 # quartz_strip_branding: hide the stock "Created with Quartz vX" footer. CSS rather than
@@ -148,7 +160,7 @@ stage_role() {
   # Quartz serves content/index.md at the site root; the wiki's index/overview were skipped,
   # so synthesize a minimal landing page for this role view (else "/" 404s).
   {
-    printf -- '---\ntitle: %s\n---\n\n' "$TITLE"
+    printf -- '---\ntitle: %s\n---\n\n' "$(yaml_dq "$TITLE")"
     printf '# %s\n\nThe **%s** view of this knowledge base. Browse with the explorer or search, or start from the pages below.\n\n' "$TITLE" "$role"
     # Most asked about: the most-queried pages that are in THIS role's view (deterministic,
     # from queries.tsv; the wiki's overview.md is skipped, so prominence reaches the site here).

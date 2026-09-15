@@ -10,25 +10,19 @@ the `llm-wiki-gen` repo at `docs/llm-wiki-pattern.md`.
 
 ## Charter (what this KB covers)
 
-> **Fill this in before ingesting.** State in two or three sentences what this knowledge base is
-> about and, just as important, what is out of scope. This is the reference every relevance
-> judgment measures against; without it, "off-topic" is undefined.
+The charter lives in [`CHARTER.md`](CHARTER.md), because it is the one thing in this file that
+is about this knowledge base rather than about how the kit works. Read it before judging any
+source. If it still holds the placeholder text, say so and stop rather than guessing at scope.
 
-This knowledge base covers: _describe the subject of {{KB_TITLE}} and the kinds of sources that
-belong here._
-
-**Out of scope:** _name what does not belong: other entities, personal material, unrelated
-projects._
-
-Measure every source against this charter. A source that is junk, off-charter, or misfiled is
-**not** woven into the wiki in depth: flag it (in `log.md` or a `> [!review]` note, and name a
-better home if it is misfiled) and leave it for the owner, rather than discarding it silently.
-`scan` drops obvious junk (see `.ingestignore`); your job is the judgment the script cannot make.
+Measure every source against it. A source that is junk, off-charter, or misfiled is **not**
+woven into the wiki in depth: flag it (in `log.md` or a `> [!review]` note, and name a better
+home if it is misfiled) and leave it for the owner, rather than discarding it silently. `scan`
+drops obvious junk (see `.ingestignore`); your job is the judgment the script cannot make.
 
 ## Relevance triage and quarantine
 
 The Charter is enforced in two places. **At intake (the map pass):** judge every source against
-the Charter and record a verdict in `.ingest/relevance.tsv` (`item · relevance · basis · date`;
+`CHARTER.md` and record a verdict in `.ingest/relevance.tsv` (`item · relevance · basis · date`;
 `relevance` is `relevant | off-charter | junk | misfiled | unsure`). Only `relevant` items are
 deep-read; the rest are **parked** (never read in full) and surfaced by `scan` under *Relevance
 review* in `pending.md` for the owner. A `misfiled` verdict names a better home; the owner moves
@@ -73,12 +67,16 @@ task. When in doubt, prefer inaction and surface it to the human.
 
 ```
 {{KB_NAME}}/
-├── AGENTS.md          # the schema (page conventions + workflows)
+├── AGENTS.md          # the schema (page conventions + workflows); tracks the kit
+├── CHARTER.md         # what this KB covers and excludes — YOURS, never overwritten
 ├── CLAUDE.md          # thin pointer to AGENTS.md (Claude Code auto-loads it)
 ├── README.md          # human-facing intro + Obsidian setup
 ├── notes.md           # owner-authored facts & corrections (authoritative; cite as "per owner")
 ├── STYLE.md           # writing-style guide, avoid AI-writing tells (followed on every page)
+├── STYLE.local.md     # this KB's style additions — YOURS, read after STYLE.md
 ├── .ingestignore      # names scan/sweep skip as junk (system cruft, temp files)
+├── .ingestignore.local # this KB's extra junk patterns — YOURS
+├── .kit               # which kit version produced the kit-owned files (scripts/upgrade)
 ├── .schema/           # page-type + privilege-tier vocabularies (lint/classify/publish read these)
 ├── inbox/             # shareable staging; scripts/sweep MOVES drops into raw/
 │                     # (sweep also takes items promoted to this KB from the capture/ queue)
@@ -350,7 +348,7 @@ pass and resume later; the wiki is usable throughout. The frontier is `.ingest/c
 - **Pass 0: map** (`ingest --map`): cheap. Build the structural skeleton and
   enumerate the corpus into `coverage.tsv` with a value tier per item, **owner priorities
   from `notes.md` first, then a type heuristic** (financial / legal / contractual / policy =
-  high; receipts / incidental = low). Also record a relevance verdict per item in `.ingest/relevance.tsv` against the Charter, and
+  high; receipts / incidental = low). Also record a relevance verdict per item in `.ingest/relevance.tsv` against `CHARTER.md`, and
   park anything not `relevant`. Nothing read in full yet; everything `unread`.
 - **Pass 1: read** (default): read the **high-value** unread documents in full, extract
   facts, upgrade pages from inferred to cited, derive `analysis/` pages. Mark them `read`.
@@ -483,7 +481,7 @@ to ask. The machinery lives in `scripts/` and `.ingest/`:
   columns; `scan --refresh` owns the fingerprint and flips `read→stale` when a doc changes.
   See *Progressive deepening*.
 - **`.ingest/relevance.tsv`**: the relevance verdict per source (you own it), written by the map
-  pass against the Charter (`item · relevance · basis · date`). Parked items (anything but
+  pass against `CHARTER.md` (`item · relevance · basis · date`). Parked items (anything but
   `relevant`) are not deep-read; `scan` surfaces those needing review in `pending.md`.
 - **`scripts/ingest`**: runs `scan`, and if anything is pending, ingests it,
   then advances the manifest and commits. Run it yourself, or schedule it (see

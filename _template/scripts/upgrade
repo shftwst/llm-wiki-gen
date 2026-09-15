@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# upgrade — refresh this KB's kit-owned files from the kit, leaving everything of yours alone.
+#
+#   ./scripts/upgrade                 fetch the kit from the source in .kit and refresh
+#   ./scripts/upgrade <version>       pin the fetch to a tag, branch or commit
+#   ./scripts/upgrade --from <path>   use a checkout, an unpacked release, or a tarball
+#   ./scripts/upgrade --check         report only: what is behind, what has been edited
+#   ./scripts/upgrade --pin <path>    mark a file you edited as deliberately divergent
+#   ./scripts/upgrade --force         take the kit's version of edited files (keeps a backup)
+#
+# A KB is templated once by new-kb and then frozen, so without this every fix stays in the kit.
+# The split that makes refreshing safe is in .kit-owned: those files are the kit's and are
+# overwritten, everything else is yours and is never touched. See docs/kit-updates.md.
+#
+# Nothing is overwritten silently. Every kit-owned file's checksum is recorded in .kit as it was
+# installed; a file whose checksum still matches is refreshed, and one that differs has been
+# edited here, so the upgrade stops and names it. Then either --pin it (keep yours, and skip it
+# from now on) or --force (take the kit's, yours saved as <name>.local-backup).
+
+set -euo pipefail
+
+# --- re-exec from a copy -----------------------------------------------------
+# This script is itself kit-owned, so the refresh below rewrites it. Bash reads a script
+# incrementally, so overwriting the running file leaves the shell executing whatever lands at
+# its current offset. Run from a copy and the file on disk can be replaced freely.
+if [ "${KB_UPGRADE_REEXEC:-0}" != 1 ]; then
+  _self="$(mktemp)"; cat "${BASH_SOURCE[0]}" > "$_self"; chmod +x "$_self"
+  KB_UPGRADE_REEXEC=1 KB_UPGRADE_SELF="$_self" \
+    KB_UPGRADE_ORIGIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" \
+    exec "$_self" "$@"
+fi
+KB_DIR="${KB_UPGRADE_ORIGIN:?}"
+SELF="${KB_UPGRADE_SELF:-}"   # the copy we are running from; cleaned up on exit
+KIT_FILE="$KB_DIR/.kit"
+
+die()  { printf 'upgrade: %s\n' "$1" >&2; exit 1; }
+note() { printf 'upgrade: %s\n' "$1"; }
+
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+        else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+
+kit_meta() { awk -F'\t' -v k="$2" '$1=="meta" && $2==k {print $3; exit}' "$1" 2>/dev/null || true; }
+kit_sha()  { awk -F'\t' -v p="$2" '$1=="file" && $2==p {print $3; exit}' "$1" 2>/dev/null || true; }
+kit_state(){ awk -F'\t' -v p="$2" '$1=="file" && $2==p {print $4; exit}' "$1" 2>/dev/null || true; }
+
+# --- args --------------------------------------------------------------------
+FROM=""; VERSION=""; CHECK=0; FORCE=0; PIN=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --from)  FROM="${2:?--from needs a path}"; shift 2;;
+    --check) CHECK=1; shift;;
+    --force) FORCE=1; shift;;
+    --pin)   PIN="${2:?--pin needs a path}"; shift 2;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+    --*)     die "unknown flag '$1'";;
+    *)       VERSION="$1"; shift;;
+  esac
+done
+
+# --pin edits the ledger and does nothing else: it is a statement about this KB, not a fetch.
+if [ -n "$PIN" ]; then
+  [ -f "$KIT_FILE" ] || die "no .kit here; nothing to pin against"
+  grep -q "^file	$PIN	" "$KIT_FILE" || die "'$PIN' is not a kit-owned file"
+  awk -F'\t' -v p="$PIN" 'BEGIN{OFS="\t"} $1=="file" && $2==p {$4="pinned"} {print}' \
+    "$KIT_FILE" > "$KIT_FILE.tmp" && mv "$KIT_FILE.tmp" "$KIT_FILE"
+  note "pinned $PIN; upgrades will skip it and say so."
+  exit 0
+fi
+
+# --- resolve the source ------------------------------------------------------
+SRC="$FROM"
+[ -n "$SRC" ] || SRC="$(kit_meta "$KIT_FILE" source)"
+[ -n "$SRC" ] || die "no kit source: pass --from <path>, or record one in .kit"
+
+WORK="$(mktemp -d)"; trap 'rm -rf "$WORK" ${SELF:+"$SELF"}' EXIT
+KIT=""
+case "$SRC" in
+  *.tar.gz|*.tgz|*.tar)
+    [ -f "$SRC" ] || die "no tarball at $SRC"
+    mkdir -p "$WORK/kit" && tar -xf "$SRC" -C "$WORK/kit"
+    KIT="$(find "$WORK/kit" -maxdepth 2 -type d -name _template | head -1)"
+    KIT="${KIT%/_template}";;
+  *://*|*@*:*)
+    command -v git >/dev/null 2>&1 || die "git is needed to fetch $SRC"
+    if [ -n "$VERSION" ]; then git clone -q --depth 1 --branch "$VERSION" "$SRC" "$WORK/kit" 2>/dev/null \
+        || die "could not fetch '$VERSION' from $SRC"
+    else git clone -q --depth 1 "$SRC" "$WORK/kit" || die "could not fetch $SRC"; fi
+    KIT="$WORK/kit";;
+  *)
+    [ -d "$SRC" ] || die "no kit directory at $SRC"
+    KIT="$SRC";;
+esac
+[ -d "$KIT/_template" ] || die "$SRC does not look like the kit (no _template/)"
+
+# Version: what was asked for, else the source's own commit, else a plain marker.
+if [ -z "$VERSION" ]; then
+  VERSION="$(git -C "$KIT" rev-parse --short HEAD 2>/dev/null || true)"
+  VERSION="${VERSION:-local}"
+fi
+INSTALLED="$(kit_meta "$KIT_FILE" version)"
+
+# --- render the kit's files for THIS base -------------------------------------
+# new-kb writes the title and name into several kit-owned files, so a base's copy never matches
+# the template byte for byte. Comparing against the raw template would report every such file as
+# changed forever, and copying it in would write {{KB_TITLE}} back into the base. So the kit is
+# rendered with this base's values first, and everything downstream compares against that.
+#
+# Values come from .kit where new-kb recorded them; for a base that predates this, they are
+# recovered from the directory name and the AGENTS.md heading.
+KB_NAME="$(kit_meta "$KIT_FILE" kb_name)"; KB_NAME="${KB_NAME:-$(basename "$KB_DIR")}"
+KB_TITLE="$(kit_meta "$KIT_FILE" kb_title)"
+if [ -z "$KB_TITLE" ] && [ -f "$KB_DIR/AGENTS.md" ]; then
+  KB_TITLE="$(sed -n '1s/^# \(.*\): Knowledge Base Schema$/\1/p' "$KB_DIR/AGENTS.md")"
+fi
+KB_TITLE="${KB_TITLE:-$KB_NAME}"
+KB_SEEDED="$(kit_meta "$KIT_FILE" seeded)"; KB_SEEDED="${KB_SEEDED:-$(date +%F)}"
+
+render() {   # render <relative-path> -> $WORK/rendered/<path>
+  mkdir -p "$WORK/rendered/$(dirname "$1")"
+  KB_NAME="$KB_NAME" KB_TITLE="$KB_TITLE" DATE="$KB_SEEDED" YEAR="${KB_SEEDED%%-*}" \
+  perl -pe '
+    s/\{\{KB_NAME\}\}/$ENV{KB_NAME}/g;
+    s/\{\{KB_TITLE\}\}/$ENV{KB_TITLE}/g;
+    s/\{\{DATE\}\}/$ENV{DATE}/g;
+    s/\{\{YEAR\}\}/$ENV{YEAR}/g;
+  ' "$KIT/_template/$1" > "$WORK/rendered/$1"
+  [ -x "$KIT/_template/$1" ] && chmod +x "$WORK/rendered/$1"
+  printf '%s' "$WORK/rendered/$1"
+}
+
+# --- which files the kit owns (read from the NEW kit, so it can claim more) ---
+owned() {
+  while IFS= read -r line; do
+    case "$line" in ''|\#*) continue;; esac
+    case "$line" in
+      */) [ -d "$KIT/_template/$line" ] || continue
+          (cd "$KIT/_template" && find "$line" -type f | sort);;
+      *)  [ -f "$KIT/_template/$line" ] && printf '%s\n' "$line";;
+    esac
+  done < "$KIT/_template/.kit-owned"
+}
+[ -f "$KIT/_template/.kit-owned" ] || die "this kit has no .kit-owned, so it cannot say what it owns"
+FILES="$(owned)"
+
+# --- one-time migration: lift a charter still living inside AGENTS.md ---------
+MIGRATED=0
+if [ ! -f "$KB_DIR/CHARTER.md" ] && grep -q '^## Charter' "$KB_DIR/AGENTS.md" 2>/dev/null; then
+  if [ "$CHECK" -eq 0 ]; then
+    awk '/^## Charter/{c=1} /^## Relevance triage/{c=0} c' "$KB_DIR/AGENTS.md" > "$WORK/charter"
+    { echo "# Charter"; echo; echo "Lifted out of AGENTS.md by scripts/upgrade so the kit can"; \
+      echo "maintain that file. This one is yours."; echo; \
+      sed '1d' "$WORK/charter"; } > "$KB_DIR/CHARTER.md"
+  fi
+  MIGRATED=1
+fi
+
+# --- compare ------------------------------------------------------------------
+same=""; changed=""; edited=""; pinned=""; added=""
+for f in $FILES; do
+  src="$(render "$f")"; dst="$KB_DIR/$f"
+  if [ ! -f "$dst" ]; then added="$added $f"; continue; fi
+  recorded="$(kit_sha "$KIT_FILE" "$f")"
+  if [ "$(kit_state "$KIT_FILE" "$f")" = pinned ]; then pinned="$pinned $f"; continue; fi
+  now="$(sha "$dst")"
+  if [ -n "$recorded" ] && [ "$now" != "$recorded" ]; then edited="$edited $f"; continue; fi
+  if [ "$now" = "$(sha "$src")" ]; then same="$same $f"; else changed="$changed $f"; fi
+done
+
+report() { [ -n "$2" ] && { printf '  %s:%s\n' "$1" "$(printf '%s' "$2" | tr ' ' '\n' | sed 's/^/ /' | tr '\n' ' ')"; } || true; }
+
+note "kit $SRC at ${VERSION}${INSTALLED:+ (installed: $INSTALLED)}"
+[ "$MIGRATED" -eq 1 ] && note "charter: lifted out of AGENTS.md into CHARTER.md (yours from now on)"
+report "to update" "$changed"; report "new" "$added"; report "unchanged" "$same"
+report "pinned, skipped" "$pinned"; report "EDITED HERE" "$edited"
+
+if [ -n "$edited" ] && [ "$FORCE" -eq 0 ]; then
+  echo
+  note "stopping: the files above were edited in this KB, and an upgrade would discard that."
+  note "  keep yours:   ./scripts/upgrade --pin <path>   (then re-run)"
+  note "  take the kit's: ./scripts/upgrade --force      (yours saved as <path>.local-backup)"
+  exit 1
+fi
+if [ "$CHECK" -eq 1 ]; then
+  [ -z "$changed$added" ] && note "up to date." || note "run without --check to apply."
+  exit 0
+fi
+
+# --- apply ---------------------------------------------------------------------
+n=0
+for f in $changed $added $edited; do
+  case " $pinned " in *" $f "*) continue;; esac
+  src="$WORK/rendered/$f"; [ -f "$src" ] || src="$(render "$f")"
+  dst="$KB_DIR/$f"
+  case " $edited " in *" $f "*) cp "$dst" "$dst.local-backup"; note "kept your $f as $f.local-backup";; esac
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"; [ -x "$src" ] && chmod +x "$dst"
+  n=$((n + 1))
+done
+
+# --- rewrite the ledger ---------------------------------------------------------
+{
+  echo "# .kit — which kit produced this KB's kit-owned files. Script-owned; do not edit."
+  echo "# Columns: kind<TAB>...   meta: key/value.   file: path/sha256/tracked|pinned."
+  printf 'meta\tsource\t%s\n' "$SRC"
+  printf 'meta\tversion\t%s\n' "$VERSION"
+  printf 'meta\tinstalled\t%s\n' "$(date +%F)"
+  for f in $FILES; do
+    [ -f "$KB_DIR/$f" ] || continue
+    st=tracked; case " $pinned " in *" $f "*) st=pinned;; esac
+    printf 'file\t%s\t%s\t%s\n' "$f" "$(sha "$KB_DIR/$f")" "$st"
+  done
+} > "$KIT_FILE"
+
+note "$n file(s) updated; now on $VERSION."

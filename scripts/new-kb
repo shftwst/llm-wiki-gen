@@ -64,6 +64,35 @@ find "$TARGET" -type f ! -path '*/.git/*' -print0 | while IFS= read -r -d '' f; 
   ' "$f"
 done
 
+# --- record which kit produced the kit-owned files ---------------------------
+# Checksums are taken AFTER substitution, of the files as installed, because the title is
+# written into several of them and they would otherwise never match the template again.
+# scripts/upgrade reads this to tell a file it may refresh from one somebody has edited.
+_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+         else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+KIT_SOURCE="${KB_KIT_SOURCE:-$(git -C "$KIT_DIR" remote get-url origin 2>/dev/null || echo "$KIT_DIR")}"
+KIT_VERSION="$(git -C "$KIT_DIR" rev-parse --short HEAD 2>/dev/null || echo local)"
+{
+  echo "# .kit — which kit produced this KB's kit-owned files. Script-owned; do not edit."
+  echo "# Columns: kind<TAB>...   meta: key/value.   file: path/sha256/tracked|pinned."
+  printf 'meta\tsource\t%s\n' "$KIT_SOURCE"
+  printf 'meta\tversion\t%s\n' "$KIT_VERSION"
+  printf 'meta\tinstalled\t%s\n' "$DATE"
+  printf 'meta\tkb_name\t%s\n' "$KB_NAME"
+  printf 'meta\tkb_title\t%s\n' "$KB_TITLE"
+  printf 'meta\tseeded\t%s\n' "$DATE"
+  while IFS= read -r line; do
+    case "$line" in ''|\#*) continue;; esac
+    case "$line" in
+      */) [ -d "$TARGET/$line" ] || continue
+          (cd "$TARGET" && find "$line" -type f | sort);;
+      *)  [ -f "$TARGET/$line" ] && printf '%s\n' "$line";;
+    esac
+  done < "$TEMPLATE_DIR/.kit-owned" | while IFS= read -r f; do
+    printf 'file\t%s\t%s\ttracked\n' "$f" "$(_sha "$TARGET/$f")"
+  done
+} > "$TARGET/.kit"
+
 # --- git init ----------------------------------------------------------------
 if command -v git >/dev/null 2>&1; then
   git -C "$TARGET" init -q

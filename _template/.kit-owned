@@ -1,0 +1,17 @@
+# .kit-owned — the files this kit owns and refreshes on `scripts/upgrade`. Everything else in a
+# knowledge base is the base's own and is never overwritten: the charter, the schema, the roles,
+# the style additions, the ignore additions, and of course notes.md, log.md, wiki/ and raw/.
+#
+# One path per line, relative to the KB root. A trailing slash means every file beneath it.
+# The kit reads this list from the NEW version during an upgrade, so a later kit can take
+# ownership of a file it did not ship before.
+AGENTS.md
+STYLE.md
+.gitignore
+.ingestignore
+.kit-owned
+.claude/
+scripts/
+raw/README.md
+inbox/README.md
+junk/README.md

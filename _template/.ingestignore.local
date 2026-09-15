@@ -1,0 +1,5 @@
+# .ingestignore.local — yours. Seeded empty and never overwritten.
+#
+# .ingestignore tracks the kit, so additions to its cruft list reach this KB on upgrade. Put
+# patterns specific to these sources here instead of editing that file. Same gitignore-style
+# globs, matched against each item's name.

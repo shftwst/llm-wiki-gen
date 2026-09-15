@@ -75,6 +75,42 @@ Non-empty `.ingestignore` matches move to `junk/`. A zero-byte file, or a direct
 
 `KB_CAPTURE_DIR` overrides the queue location (default: `capture/` beside the KB).
 
+## `upgrade`: take the kit's fixes into this KB
+
+A KB is templated once by `new-kb` and then frozen, so without this every later fix stays in the
+kit. `upgrade` refreshes the files the kit owns and leaves everything of yours alone.
+
+```sh
+./scripts/upgrade                 # fetch the kit from the source in .kit and refresh
+./scripts/upgrade 0.5             # pin the fetch to a tag, branch or commit
+./scripts/upgrade --from ../llm-wiki-gen   # a checkout, an unpacked release, or a tarball
+./scripts/upgrade --check         # report only: what is behind, what has been edited here
+```
+
+`.kit-owned` draws the line. Those files are the kit's: `AGENTS.md`, `STYLE.md`, `scripts/`,
+`.gitignore`, `.ingestignore`, `.claude/`, and the intake READMEs. Everything else is yours and
+is never touched, including `CHARTER.md`, `STYLE.local.md`, `.ingestignore.local`, the `.schema/`
+vocabularies, `.publish/roles.tsv`, `notes.md`, `log.md`, `wiki/` and `raw/`. The list is read
+from the incoming kit, so a later version can take ownership of a file it did not ship before.
+
+Nothing is overwritten silently. `.kit` records each kit-owned file's checksum as installed, so
+a file that still matches is refreshed and one that differs has been edited here. The upgrade
+stops and names it, and you choose:
+
+```sh
+./scripts/upgrade --pin scripts/lint   # keep yours; upgrades skip it and say so
+./scripts/upgrade --force              # take the kit's; yours kept as <path>.local-backup
+```
+
+`lint` reports edited kit-owned files too, cheaply and without network, so you find out before
+an upgrade stops rather than during one.
+
+Two details worth knowing. The kit is rendered with this KB's name and title before anything is
+compared, so a templated file like `AGENTS.md` is not reported as changed forever and
+`{{KB_TITLE}}` is never written back in. And a KB whose charter still lives inside `AGENTS.md`
+has it lifted into `CHARTER.md` automatically on the first upgrade, before that file is
+refreshed, so nothing is lost.
+
 ## `lint`: mechanical QA
 
 Structural, style, and privacy checks over `wiki/`. No LLM, no cost.

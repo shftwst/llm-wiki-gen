@@ -10,6 +10,7 @@
 _KB_TYPES_TSV="$KB_DIR/.schema/page-types.tsv"
 _KB_TIERS_TSV="$KB_DIR/.schema/privilege-tiers.tsv"
 _KB_IGNORE="$KB_DIR/.ingestignore"
+_KB_IGNORE_LOCAL="$KB_DIR/.ingestignore.local"
 _KB_SENSITIVITY="$KB_DIR/.ingest/sensitivity.tsv"
 
 _kb_req()       { [ -f "$1" ] || { echo "kblib: missing $1" >&2; exit 1; }; }   # hard-error, lazy
@@ -31,8 +32,16 @@ kb_tier_rank()    { _kb_tiers_raw | awk -F'\t' -v t="$1" '$1==t{print $2; exit}'
 
 # Junk filter (.ingestignore) ------------------------------------------------
 # Patterns are loaded once into a variable so per-file checks need no re-read or subprocess.
+# Two files: .ingestignore tracks the kit, so additions to its cruft list arrive on upgrade,
+# and .ingestignore.local is this KB's own and is never overwritten. Both are read.
 _KB_IGNORE_PATS=""
-[ -f "$_KB_IGNORE" ] && _KB_IGNORE_PATS="$(grep -vE '^[[:space:]]*(#|$)' "$_KB_IGNORE" 2>/dev/null || true)"
+for _f in "$_KB_IGNORE" "$_KB_IGNORE_LOCAL"; do
+  [ -f "$_f" ] || continue
+  _p="$(grep -vE '^[[:space:]]*(#|$)' "$_f" 2>/dev/null || true)"
+  [ -n "$_p" ] || continue
+  _KB_IGNORE_PATS="${_KB_IGNORE_PATS:+$_KB_IGNORE_PATS
+}$_p"
+done
 
 # kb_ignored <name>: exit 0 if <name> matches a .ingestignore glob (matched against the name,
 # gitignore-style; a trailing slash is tolerated so dir-style entries match a bare name).

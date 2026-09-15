@@ -46,22 +46,37 @@ echo '{"tool_name":"Write","tool_input":{"file_path":"raw/x"},"cwd":"'"$PWD"'"}'
 The hook is the in-tool guard. For a hard OS-level guarantee, mount the living source read-only,
 or run ingest as a user without write access to `raw/` and its symlink targets.
 
-## `sweep`: move shared intake into the protected store
+## `sweep`: move staged intake into the protected store
 
-`inbox/` is a shareable staging directory; `raw/` is the protected source store you never
-share. `sweep` **moves** each item from `inbox/` into `raw/` and commits the move, so
-once curated, a source leaves the shared area and contributors can't alter or delete it.
+`raw/` is the protected source store you never share. `sweep` **moves** items into it from
+two staging areas and commits the move, so once curated a source leaves the staging area and
+contributors can't alter or delete it.
+
+- **`inbox/`** — the shareable drop folder. Every item is swept.
+- **`capture/`** — the access layer's ingress queue (phone uploads, agent submits), shared
+  across KBs and living beside them rather than inside one. Only items whose sidecar
+  `capture/.meta/<id>.json` records `"promoted": {"kb": "<this KB>"}` are swept. Anything
+  unpromoted, or promoted to another KB, is left alone.
 
 ```sh
-./scripts/sweep            # move inbox/* → raw/ and commit
+./scripts/sweep            # move inbox/* and promoted capture items → raw/, then commit
 ./scripts/sweep --dry-run  # show what would move; move nothing
 ```
 
 It runs automatically as the first step of `ingest` (disable with `--no-sweep`).
+Promotion is a recorded decision rather than a move because the server that receives captures
+is deliberately given no write access to any KB. Sweep, which already holds write access to
+`raw/`, is what acts on the decision. A missing or unreadable sidecar reads as "not promoted",
+so the failure direction is always "stays in the queue". After a move the sidecar is retired
+to `capture/.done/`, which keeps the provenance next to the decision and stops a re-run
+reconsidering it. Reading promotions needs `jq`; without it sweep does `inbox/` and says so.
+
 Name collisions never overwrite a `raw/` source, the incoming item is timestamp-suffixed.
 Non-empty `.ingestignore` matches move to `junk/`. A zero-byte file, or a directory containing one, is left in place and flagged instead of moved, since it may be a real download still in flight that a move would lose.
 
 ## `lint`: mechanical QA
+`PINKY_CAPTURE_DIR` overrides the queue location (default: `capture/` beside the KB).
+
 
 Structural, style, and privacy checks over `wiki/`. No LLM, no cost.
 

@@ -162,7 +162,8 @@ Plain files, nothing exotic:
 
 - `wiki/` the notes the AI writes and links (open and read directly)
 - `raw/` your source documents (read-only; files or symlinks to living folders)
-- `inbox/` the shared drop folder; `sweep` moves drops into `raw/`
+- `inbox/` the shared drop folder; `sweep` moves drops into `raw/`, along with any
+  items promoted to this KB in a sibling `capture/` queue
 - `.schema/` your page types and privacy levels
 - `.publish/` publish roles, and a disposable site-builder checkout
 - `.ingest/` bookkeeping: what's been read, what's covered, what each run cost

@@ -81,6 +81,7 @@ task. When in doubt, prefer inaction and surface it to the human.
 ├── .ingestignore      # names scan/sweep skip as junk (system cruft, temp files)
 ├── .schema/           # page-type + privilege-tier vocabularies (lint/classify/publish read these)
 ├── inbox/             # shareable staging; scripts/sweep MOVES drops into raw/
+│                     # (sweep also takes items promoted to this KB from the capture/ queue)
 ├── junk/              # sweep holding pen: .ingestignore matches (gitignored)
 ├── raw/               # sources (files, directories, symlinks), protected, never shared
 ├── wiki/              # the wiki (Obsidian vault root), you own everything here
@@ -124,7 +125,9 @@ Support re-ingesting updates, see the **Re-ingest** workflow.
 
 `inbox/` is a **shareable staging area**, the one directory exposed to contributors.
 People drop files or folders into it; `scripts/sweep` then **moves** each item into
-`raw/`. Because the sweep *moves* (not copies), a curated source leaves the shared area
+`raw/`. Sweep has a second input: the shared `capture/` queue beside the KB, from which it
+takes only items whose sidecar records a promotion to this KB (the capture server records
+that decision but never writes into a KB). Because the sweep *moves* (not copies), a curated source leaves the shared area
 entirely, so contributors can never read, alter, or delete the real `raw/` source. Items `sweep` will not promote are handled by confidence. A non-empty `.ingestignore` match moves to `junk/` (garbage; delete). But a zero-byte file, or a directory containing one, is **left exactly where it is** and flagged: it may be a real document still downloading, and moving an un-synced file can cancel the download and lose it. Junk never reaches the protected store; once a held file finishes syncing, re-sweep it, or delete it if it is junk.
 
 - **Never share `raw/` or the KB root: share only `inbox/`** (e.g. point `inbox/` at a

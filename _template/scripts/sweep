@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
-# sweep — move staged sources from inbox/ into raw/, setting obvious junk aside and never
-# touching anything that might be mid-download.
+# sweep — move staged sources into raw/, setting obvious junk aside and never touching
+# anything that might be mid-download. Two inputs feed it:
 #
-# inbox/ is a SHAREABLE staging area: unprivileged contributors can drop files there.
+#   inbox/    a SHAREABLE staging directory: unprivileged contributors drop files there.
+#   capture/  the access layer's untrusted ingress queue (phone uploads, agent submits),
+#             shared across KBs and living beside them, not inside one. An item is swept
+#             only once triage has recorded a promotion decision for THIS KB in its
+#             sidecar, capture/.meta/<id>.json:  "promoted": { "kb", "at", "by" }.
+#
+# Promotion is a recorded decision, not a move: the server that receives captures never
+# writes into a KB, so every KB can stay mounted read-only to it. Sweep, which already runs
+# with write access to raw/, is what acts on the decision. An item with no promotion (or one
+# naming another KB) is left in the queue. A missing or unreadable sidecar means "not
+# promoted", so the failure direction is always "stays in the queue".
+#
 # This sweep MOVES each curated item into raw/ (the protected store), so once curated a
 # source leaves the shared area entirely — contributors can't read, alter, or delete it.
 # Share only inbox/; never share raw/ or the KB root.
@@ -22,10 +33,12 @@
 # full size and cannot be detected here, and any mv from a synced inbox can disturb the sync
 # engine. Make sure inbox/ contents are fully downloaded before sweeping.
 #
-#   ./scripts/sweep            move ready sources inbox → raw/ (junk → junk/), commit, flag held
+#   ./scripts/sweep            move ready sources inbox/ + promoted capture/ → raw/, commit, flag held
 #   ./scripts/sweep --dry-run  show what would happen; change nothing
 #
 # On a name collision the incoming item is renamed with a timestamp suffix; nothing is clobbered.
+#
+# PINKY_CAPTURE_DIR overrides the capture queue location (default: capture/ beside the KB).
 
 set -euo pipefail
 
@@ -36,9 +49,10 @@ KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INBOX="$KB_DIR/inbox"
 RAW="$KB_DIR/raw"
 JUNK="$KB_DIR/junk"
+KB_NAME="$(basename "$KB_DIR")"
+CAPTURE="${PINKY_CAPTURE_DIR:-$(cd "$KB_DIR/.." && pwd)/capture}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
-[ -d "$INBOX" ] || { echo "sweep: no inbox/ at $INBOX — nothing to do."; exit 0; }
 mkdir -p "$RAW" "$JUNK"
 
 # safe_dest <destdir> <basename>: echo a path in destdir that does not clobber an existing entry.
@@ -52,11 +66,14 @@ safe_dest() {
 }
 
 moved=0; junked=0; held=0; names=()
-shopt -s nullglob
-for item in "$INBOX"/*; do
-  base="$(basename "$item")"
-  [ "$base" = "README.md" ] && continue
 
+# route <path> <label>: decide raw/junk/held for one staged item and act on it.
+# <label> is how the item is named in output ("inbox/x" or "capture/x"). Echoes the
+# destination basename on a move so the caller can record it; sets ROUTE to the outcome.
+ROUTE=""
+route() {
+  local item="$1" label="$2" base reason dest
+  base="$(basename "$item")"
   reason="$(kb_skip_reason "$item" || true)"           # review (zero-byte file) | junk | ''
   # A REAL directory (not a symlink) with un-synced files inside is risky to move: a
   # cross-filesystem mv copies, hence reads, every file. A symlink is always safe to move — mv
@@ -67,25 +84,65 @@ for item in "$INBOX"/*; do
   fi
 
   if [ "$reason" = review ]; then
-    echo "sweep: HELD inbox/$base — empty or possibly un-synced; left in place. Finish the download (then re-sweep) or delete it."
-    held=$((held + 1)); continue
+    echo "sweep: HELD $label — empty or possibly un-synced; left in place. Finish the download (then re-sweep) or delete it."
+    ROUTE=held; held=$((held + 1)); return 0
   fi
   if [ "$reason" = junk ]; then
     dest="$(safe_dest "$JUNK" "$base")"
-    if [ "$DRY" -eq 1 ]; then echo "sweep: [dry-run] inbox/$base → junk/$(basename "$dest") (.ingestignore)"
+    if [ "$DRY" -eq 1 ]; then echo "sweep: [dry-run] $label → junk/$(basename "$dest") (.ingestignore)"
     else mv "$item" "$dest"; echo "sweep: junk → junk/$(basename "$dest") (matched .ingestignore)"; fi
-    junked=$((junked + 1)); continue
+    ROUTE=junk; junked=$((junked + 1)); return 0
   fi
 
   dest="$(safe_dest "$RAW" "$base")"
-  if [ "$DRY" -eq 1 ]; then echo "sweep: [dry-run] inbox/$base → raw/$(basename "$dest")"
-  else mv "$item" "$dest"; echo "sweep: moved inbox/$base → raw/$(basename "$dest")"; fi
-  names+=("$(basename "$dest")"); moved=$((moved + 1))
-done
+  if [ "$DRY" -eq 1 ]; then echo "sweep: [dry-run] $label → raw/$(basename "$dest")"
+  else mv "$item" "$dest"; echo "sweep: moved $label → raw/$(basename "$dest")"; fi
+  names+=("$(basename "$dest")"); ROUTE=raw; moved=$((moved + 1))
+}
+
+# --- inbox/: the shared staging directory ------------------------------------
+shopt -s nullglob
+if [ -d "$INBOX" ]; then
+  for item in "$INBOX"/*; do
+    base="$(basename "$item")"
+    [ "$base" = "README.md" ] && continue
+    route "$item" "inbox/$base"
+  done
+fi
+
+# --- capture/: items triage has promoted to THIS KB --------------------------
+# The sidecar is the authority. Its id comes from the sidecar's own filename and is
+# re-validated against the server's id charset before any filesystem use, so a hand-written
+# sidecar cannot name a path outside the queue. The kb value is only ever compared for
+# equality with this KB's directory name; it is never joined into a path.
+if [ -d "$CAPTURE/.meta" ]; then
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "sweep: jq not found — cannot read capture promotions; inbox/ swept, capture/ left alone." >&2
+  else
+    for mf in "$CAPTURE"/.meta/*.json; do
+      id="$(basename "$mf" .json)"
+      case "$id" in
+        .*|*/*) continue;;                                  # never a relative or nested name
+        *[!A-Za-z0-9._-]*) continue;;                       # server's capture-id charset
+      esac
+      [ -e "$CAPTURE/$id" ] || continue                     # sidecar with no payload: nothing to move
+      kb="$(jq -r '.promoted.kb // empty' "$mf" 2>/dev/null || true)"
+      [ "$kb" = "$KB_NAME" ] || continue                    # unpromoted, or promoted elsewhere
+
+      route "$CAPTURE/$id" "capture/$id"
+      # Retire the sidecar alongside the payload it describes, so the provenance record
+      # survives the move and a re-run does not reconsider a decision already acted on.
+      if [ "$DRY" -eq 0 ] && [ "$ROUTE" != held ]; then
+        mkdir -p "$CAPTURE/.done"
+        mv "$mf" "$CAPTURE/.done/$id.json"
+      fi
+    done
+  fi
+fi
 shopt -u nullglob
 
 total=$((moved + junked + held))
-if [ "$total" -eq 0 ]; then echo "sweep: inbox empty — nothing to sweep."; exit 0; fi
+if [ "$total" -eq 0 ]; then echo "sweep: inbox/ and capture/ empty — nothing to sweep."; exit 0; fi
 if [ "$DRY" -eq 1 ]; then
   echo "sweep: [dry-run] $moved → raw/, $junked → junk/, $held held in place. Nothing changed."
   exit 0
@@ -96,11 +153,11 @@ fi
 if [ "$moved" -gt 0 ] && command -v git >/dev/null 2>&1 && git -C "$KB_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   body="$(printf 'raw/%s\n' "${names[@]}")"
   git -C "$KB_DIR" add -A -- raw inbox >/dev/null 2>&1 || true
-  git -C "$KB_DIR" commit -q -m "Sweep: $moved source(s) inbox → raw" -m "$body" \
+  git -C "$KB_DIR" commit -q -m "Sweep: $moved source(s) → raw" -m "$body" \
     >/dev/null 2>&1 || echo "sweep: (nothing committed)"
 fi
 
 msg="sweep: $moved moved into raw/"
 [ "$junked" -gt 0 ] && msg="$msg; $junked set aside in junk/ (delete when ready)"
-[ "$held"   -gt 0 ] && msg="$msg; $held held in inbox/ (empty or un-synced — review)"
+[ "$held"   -gt 0 ] && msg="$msg; $held held in place (empty or un-synced — review)"
 echo "$msg."

@@ -50,6 +50,8 @@ export PATH="$BIN:$PATH"
 
 # --- fixture sources ---------------------------------------------------------
 printf 'zipbytes' > "$KB/raw/contract.docx"
+mkdir -p "$KB/raw/Client Files"
+printf 'zipbytes' > "$KB/raw/Client Files/Master Agreement.docx"   # spaces in both segments
 printf 'pdfbytes' > "$KB/raw/report.pdf"
 printf 'pdfbytes' > "$KB/raw/sub/board-scan.pdf"
 printf 'pdfbytes' > "$KB/raw/short-invoice.pdf"       # a real text layer, just a short one
@@ -81,6 +83,12 @@ grep -q "catdoc not installed" "$TMP/err" || fail "missing tool not warned: $(ca
 grep -q "PANDOC TEXT FROM contract.docx" "$KB/.ingest/text/$(field contract.docx 6)" \
   || fail "extracted text not cached"
 
+# a path with spaces is one file, not several: word-splitting turned it into nonexistent names
+[ "$(field "Client Files/Master Agreement.docx" 4)" = pandoc ] \
+  || fail "a source path with spaces was not converted (got '$(field "Client Files/Master Agreement.docx" 4)')"
+grep -q "PANDOC TEXT FROM Master Agreement.docx" \
+  "$KB/.ingest/text/$(field "Client Files/Master Agreement.docx" 6)" || fail "spaced path cached wrong"
+
 # a PDF with no text layer is recorded as a scan rather than silently empty
 [ "$(field sub/board-scan.pdf 5)" = scanned ] || fail "scanned PDF not flagged (got $(field sub/board-scan.pdf 5))"
 
@@ -96,7 +104,7 @@ done
 
 # raw/ is untouched
 [ "$(cat "$KB/raw/contract.docx")" = "zipbytes" ] || fail "raw/ source was modified"
-[ "$(find "$KB/raw" -type f | wc -l | tr -d ' ')" = 10 ] || fail "raw/ gained or lost files"
+[ "$(find "$KB/raw" -type f | wc -l | tr -d ' ')" = 11 ] || fail "raw/ gained or lost files"
 
 # --- re-run is a no-op, and does not duplicate index rows --------------------
 before="$(idx | wc -l | tr -d ' ')"

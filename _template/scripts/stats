@@ -90,9 +90,9 @@ if [ -d "$WIKI" ]; then
   oq=$(grep -rlE '^origin: *query' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
   if [ "${oq:-0}" -gt 0 ]; then
     oqv=0; oqu=0
-    for qf in $(grep -rlE '^origin: *query' "$WIKI" --include='*.md' 2>/dev/null); do
+    while IFS= read -r qf; do
       if grep -qE '^verified: *[0-9]' "$qf"; then oqv=$((oqv+1)); else oqu=$((oqu+1)); fi
-    done
+    done < <(grep -rlE '^origin: *query' "$WIKI" --include='*.md' 2>/dev/null)
     printf '  query-filed     %s page(s) (origin: query; %s verified, %s unverified)\n' "$oq" "$oqv" "$oqu"
   fi
 else

@@ -116,13 +116,15 @@ kb_source_tier() {
 # evidence of low sensitivity, and guessing here would produce false errors.
 kb_page_source_tier() {
   _best=""; _bestrank=-1
-  for _p in $(kb_page_sources "$1"); do
+  # read, not word-split: a cited source path may contain spaces.
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
     for _t in $(kb_source_tier "$_p"); do
       kb_tier_valid "$_t" || continue
       _r="$(kb_tier_rank "$_t")"; [ -n "$_r" ] || continue
       if [ "$_r" -gt "$_bestrank" ]; then _bestrank="$_r"; _best="$_t"; fi
     done
-  done
+  done < <(kb_page_sources "$1")
   [ -n "$_best" ] && printf '%s' "$_best"
   return 0
 }

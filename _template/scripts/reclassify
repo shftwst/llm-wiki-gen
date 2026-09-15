@@ -47,7 +47,7 @@ total=0; names=""
 pass=0
 while [ "$pass" -lt "$MAX_PASSES" ]; do
   pass=$((pass + 1)); changed=0
-  for f in $(find "$WIKI" -name '*.md' | sort); do
+  while IFS= read -r f; do
     rel=${f#"$WIKI"/}
     pv="$(awk -F': ' '/^privilege:/{sub(/^[^:]*: */,"");print;exit}' "$f")"
     [ -n "$pv" ] || continue                      # no privilege set: lint's error, not ours
@@ -62,7 +62,7 @@ while [ "$pass" -lt "$MAX_PASSES" ]; do
     names="$names$rel ($pv → $want)
 "
     changed=$((changed + 1)); total=$((total + 1))
-  done
+  done < <(find "$WIKI" -name '*.md' | sort)
   [ "$changed" -eq 0 ] && break
   [ "$DRY" -eq 1 ] && break    # nothing was written, so a second pass would repeat itself
 done

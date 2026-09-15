@@ -58,8 +58,11 @@ esac
 # An ABSOLUTE symlink breaks in a container even when its target is inside KB_ROOT, because the
 # root is mounted somewhere else (/knowledge) and the host path does not exist there. A relative
 # one pointing inside the root works fine. That distinction decides the advice, so give it.
+# read, not word-split: a source path may contain spaces, and splitting one turns a single
+# file into several nonexistent ones.
 unresolved=0
-for _u in $(kb_unresolved_sources "$RAW"); do
+while IFS= read -r _u; do
+  [ -n "$_u" ] || continue
   _t="$(readlink "$RAW/$_u" 2>/dev/null || true)"
   case "$_t" in
     /*) echo "convert: raw/$_u -> $_t does not resolve here. It is an ABSOLUTE link, so it breaks wherever that path is absent, including inside a container even when the target is under KB_ROOT." >&2
@@ -67,7 +70,7 @@ for _u in $(kb_unresolved_sources "$RAW"); do
     *)  echo "convert: raw/$_u -> ${_t:-?} does not resolve here, so its sources are invisible. Run where the mount exists (not in a container)." >&2;;
   esac
   unresolved=$((unresolved + 1))
-done
+done < <(kb_unresolved_sources "$RAW")
 mkdir -p "$OUT"
 [ -f "$INDEX" ] || printf '%s\n' "$INDEX_HEADER" > "$INDEX"
 
@@ -116,12 +119,14 @@ converted=0; skipped=0; scans=0; unchanged=0; empties=0
 if [ -n "$ONE" ]; then
   case "$ONE" in /*) list="$ONE";; raw/*) list="$KB_DIR/$ONE";; *) list="$RAW/$ONE";; esac
   [ -e "$list" ] || { echo "convert: no such source '$ONE'" >&2; exit 1; }
-  files="$(find -L "$list" -type f 2>/dev/null || true)"
 else
-  files="$(find -L "$RAW" -type f 2>/dev/null || true)"
+  list="$RAW"
 fi
 
-for f in $files; do
+# Fed by process substitution rather than a pipe, so the counters below survive, and read line
+# by line rather than word-split, so "Master Agreement.docx" stays one file.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
   base="${f##*/}"
   kb_ignored "$base" && continue
   [ -s "$f" ] || continue                       # zero-byte: possibly mid-download, leave it
@@ -166,7 +171,7 @@ for f in $files; do
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$rel" "$size" "$mtime" "$tool" "$status" "$outname" "$(date +%F)" >> "$INDEX"
   echo "convert: $rel → $outname ($tool, $status)"
   converted=$((converted + 1))
-done
+done < <(find -L "$list" -type f 2>/dev/null || true)
 
 if [ "$DRY" -eq 1 ]; then
   m="convert: [dry-run] $converted to convert, $unchanged unchanged, $skipped skipped"

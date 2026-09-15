@@ -70,8 +70,8 @@ for. Both are optional; a base with neither behaves exactly as it does now.
 
 ## `.kit` and the update command
 
-A `.kit` file at the base's root records where the kit came from and which version produced the
-current files. `new-kb` writes it.
+A `.kit` file at the base's root records where the kit came from, which version produced the
+current files, and a checksum per kit-owned file (see below). `new-kb` writes it.
 
 `scripts/update-kit` fetches the kit at a version, refreshes only the kit-owned column, and
 prints what changed. It never touches the seeded column.
@@ -80,6 +80,31 @@ It also performs a one-time migration, so bases created before this design conve
 when a base has no `CHARTER.md` and its `AGENTS.md` still carries a `## Charter` section, the
 section is lifted into `CHARTER.md` first, and only then is `AGENTS.md` refreshed. A base that
 has already converted is left alone.
+
+## Never overwrite a file somebody edited
+
+Until now, editing any file in a base was safe, because nothing ever overwrote one. `AGENTS.md`
+and `STYLE.md` in particular were fair game. The moment they become kit-owned, a naive refresh
+destroys that work, and `AGENTS.md` is the likeliest file to have been edited because it was
+the only place to record anything about how this base should behave.
+
+So `.kit` records a checksum per kit-owned file, taken of the file as installed rather than of
+the template, since `new-kb` substitutes the title into `AGENTS.md` and the two would otherwise
+never match. On update, a file whose checksum still matches is refreshed silently. A file whose
+checksum differs has been edited locally, and the update stops rather than overwriting it.
+
+The report names each edited file and offers two ways forward:
+
+- **pin it.** The base keeps its version, `.kit` records the file as deliberately divergent, and
+  future updates skip it and say so. An accidental divergence becomes a declared one.
+- **take the kit's.** The local file is saved beside it as `<name>.local-backup` first, so the
+  edit is recoverable, and the kit version is written.
+
+Neither happens without being asked. An update that silently reverted somebody's conventions
+would be worse than never updating at all, and harder to notice.
+
+This is also the safety net under the charter migration. A base whose `AGENTS.md` was edited in
+ways beyond the charter has those edits preserved and reported, not lifted and lost.
 
 ## Notice, not silent self-update
 

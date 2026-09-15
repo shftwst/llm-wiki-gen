@@ -33,8 +33,12 @@ for a in "$@"; do
   case "$a" in -*) ;; *) if [ -z "$src" ]; then src="$a"; else dest="$a"; fi;; esac
 done
 # A source named like a scan has no text layer, which is what a real scanned PDF looks like.
-case "$src" in *scan*) : > "$dest";;
-  *) printf 'PDF TEXT FROM %s, long enough to clear the scan floor comfortably.\n' "$(basename "$src")" > "$dest";;
+case "$src" in
+  # A real scan: pdftotext emits a form feed per page and no words.
+  *scan*) printf '\f\f\f' > "$dest";;
+  # A short but genuine text layer, the case a byte-count floor used to misread as a scan.
+  *short*) printf 'Invoice 4200\n' > "$dest";;
+  *) printf 'PDF TEXT FROM %s, with a full page of words behind it.\n' "$(basename "$src")" > "$dest";;
 esac
 EOF
 cat > "$BIN/xlsx2csv" <<'EOF'
@@ -48,6 +52,7 @@ export PATH="$BIN:$PATH"
 printf 'zipbytes' > "$KB/raw/contract.docx"
 printf 'pdfbytes' > "$KB/raw/report.pdf"
 printf 'pdfbytes' > "$KB/raw/sub/board-scan.pdf"
+printf 'pdfbytes' > "$KB/raw/short-invoice.pdf"       # a real text layer, just a short one
 printf 'xlsxbytes' > "$KB/raw/cap-table.xlsx"
 printf 'docbytes' > "$KB/raw/old-minutes.doc"        # catdoc is NOT faked: must skip, not fail
 printf 'plain text already' > "$KB/raw/notes.md"     # no conversion needed
@@ -78,6 +83,10 @@ grep -q "PANDOC TEXT FROM contract.docx" "$KB/.ingest/text/$(field contract.docx
 
 # a PDF with no text layer is recorded as a scan rather than silently empty
 [ "$(field sub/board-scan.pdf 5)" = scanned ] || fail "scanned PDF not flagged (got $(field sub/board-scan.pdf 5))"
+
+# a short document is NOT a scan: an invoice or a cover page has few words and a real text layer
+[ "$(field short-invoice.pdf 5)" = ok ] \
+  || fail "a short text-layer PDF was called a scan (got $(field short-invoice.pdf 5))"
 printf '%s\n' "$out" | grep -q "no text layer" || fail "summary did not mention scans: $out"
 
 # things that need no conversion, or must not be touched, are absent from the index
@@ -87,7 +96,7 @@ done
 
 # raw/ is untouched
 [ "$(cat "$KB/raw/contract.docx")" = "zipbytes" ] || fail "raw/ source was modified"
-[ "$(find "$KB/raw" -type f | wc -l | tr -d ' ')" = 9 ] || fail "raw/ gained or lost files"
+[ "$(find "$KB/raw" -type f | wc -l | tr -d ' ')" = 10 ] || fail "raw/ gained or lost files"
 
 # --- re-run is a no-op, and does not duplicate index rows --------------------
 before="$(idx | wc -l | tr -d ' ')"

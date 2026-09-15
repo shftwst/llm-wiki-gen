@@ -36,8 +36,12 @@ RAW="$KB_DIR/raw"
 OUT="$KB_DIR/.ingest/text"
 INDEX="$OUT/index.tsv"
 INDEX_HEADER=$'# index.tsv — raw source → extracted text (derived; delete .ingest/text to rebuild).\n# Columns: path\tsize\tmtime\ttool\tstatus\tout\tdate'
-# Below this many characters a PDF is treated as having no text layer, i.e. a scan.
-SCAN_FLOOR="${CONVERT_SCAN_FLOOR:-64}"
+# A PDF with no text layer is a scan, and pdftotext returns essentially nothing for one: a form
+# feed per page and no words. So the question is whether ANY text came back, not how much, and
+# the floor sits just above a stray artifact such as a digitally stamped page number rather than
+# at a word count. Counting raw bytes against a high floor called every short document, an
+# invoice or a cover page or a one-line letter, a scan and sent it for OCR it never needed.
+SCAN_FLOOR="${CONVERT_SCAN_FLOOR:-4}"
 
 DRY=0; ONE=""
 case "${1:-}" in
@@ -137,7 +141,7 @@ for f in $files; do
   # pdftotext appends its own .txt when handed a bare destination; normalise either result.
   [ -f "$dest.txt" ] && mv "$dest.txt" "$dest"
 
-  chars="$(wc -c < "$dest" | tr -d ' ')"
+  chars="$(tr -d '[:space:]\f' < "$dest" | wc -c | tr -d ' ')"   # words, not page breaks
   status=ok
   if [ "$ext" = pdf ] && [ "$chars" -lt "$SCAN_FLOOR" ]; then
     status=scanned                              # no text layer: needs OCR or a vision pass

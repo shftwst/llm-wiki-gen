@@ -217,10 +217,15 @@ mtime changes.
 Text files and images are skipped: the agent reads those directly. A missing tool is a warning
 and a skip, never a failure, so a machine with only poppler still converts its PDFs.
 
-A PDF that yields almost no text has no text layer, which means it is a scan. It is recorded as
-`status=scanned` rather than silently empty, so those can be sent for OCR (`tesseract`) or
-rasterised with `pdftoppm` and read by a vision model. `CONVERT_SCAN_FLOOR` tunes the
-threshold.
+A PDF with no text layer is a scan, and `pdftotext` returns essentially nothing for one: a form
+feed per page and no words. So the test is whether *any* text came back, counted in
+non-whitespace characters, not how much. Such a file is recorded as `status=scanned` rather
+than silently empty, so it can be sent for OCR (`tesseract`) or rasterised with `pdftoppm` and
+read by a vision model. `CONVERT_SCAN_FLOOR` tunes the threshold, which sits just above a stray
+artifact such as a digitally stamped page number.
+
+An extraction that produces nothing from a non-PDF is `status=empty` and counted separately:
+the tool failed, or the file is not what its extension claims.
 
 Everything for a full-coverage install, about 330 MB on Debian:
 

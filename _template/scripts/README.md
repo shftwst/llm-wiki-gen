@@ -53,19 +53,18 @@ two staging areas and commits the move, so once curated a source leaves the stag
 contributors can't alter or delete it.
 
 - **`inbox/`** — the shareable drop folder. Every item is swept.
-- **`capture/`** — the access layer's ingress queue (phone uploads, agent submits), shared
-  across KBs and living beside them rather than inside one. Only items whose sidecar
-  `capture/.meta/<id>.json` records `"promoted": {"kb": "<this KB>"}` are swept. Anything
-  unpromoted, or promoted to another KB, is left alone.
+- **`capture/`** — an optional external intake queue, shared across KBs and living beside them
+  rather than inside one. Only items whose sidecar `capture/.meta/<id>.json` records
+  `"promoted": {"kb": "<this KB>"}` are swept. Anything unpromoted, or promoted to another KB,
+  is left alone, and a KB with no sibling `capture/` simply has nothing to take from it.
 
 ```sh
 ./scripts/sweep            # move inbox/* and promoted capture items → raw/, then commit
 ./scripts/sweep --dry-run  # show what would move; move nothing
 ```
 
-Promotion is a recorded decision rather than a move because the server that receives captures
-is deliberately given no write access to any KB. Sweep, which already holds write access to
-`raw/`, is what acts on the decision. A missing or unreadable sidecar reads as "not promoted",
+Promotion is a recorded decision rather than a move, so whatever receives captures needs no
+write access to any KB. Sweep, which already holds write access to `raw/`, is what acts on it. A missing or unreadable sidecar reads as "not promoted",
 so the failure direction is always "stays in the queue". After a move the sidecar is retired
 to `capture/.done/`, which keeps the provenance next to the decision and stops a re-run
 reconsidering it. Reading promotions needs `jq`; without it sweep does `inbox/` and says so.
@@ -74,7 +73,7 @@ It runs automatically as the first step of `ingest` (disable with `--no-sweep`).
 Name collisions never overwrite a `raw/` source, the incoming item is timestamp-suffixed.
 Non-empty `.ingestignore` matches move to `junk/`. A zero-byte file, or a directory containing one, is left in place and flagged instead of moved, since it may be a real download still in flight that a move would lose.
 
-`PINKY_CAPTURE_DIR` overrides the queue location (default: `capture/` beside the KB).
+`KB_CAPTURE_DIR` overrides the queue location (default: `capture/` beside the KB).
 
 ## `lint`: mechanical QA
 
@@ -136,8 +135,8 @@ of the sources it cites.
 ## `reclassify`: raise pages to the tier their sources require
 
 A page written from a `personal-sensitive` source must not sit at `default`, or `publish`
-stages it into a role that was never cleared for the underlying document and an MCP credential
-reads it that should not. Two rules, both reported by `lint` as errors:
+stages it into a role that was never cleared for the underlying document, and any reader
+granted that role sees it. Two rules, both reported by `lint` as errors:
 
 - **source sensitivity** — a page carries at least the highest tier among the raw sources its
   `## Sources` section cites, per `.ingest/sensitivity.tsv`. A row covers a path when the path

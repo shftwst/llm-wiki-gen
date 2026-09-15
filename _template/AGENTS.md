@@ -218,8 +218,8 @@ Every page carries a **`privilege`** tier in frontmatter so privileged content c
 categorised. The tier ladder is configurable per KB in `.schema/privilege-tiers.tsv` (least to
 most sensitive; lint validates `privilege` against it, `classify` maps keyword buckets to it,
 and `roles.tsv` grants each published role a subset). The tier is **enforced**, not decorative:
-`publish` stages only the pages a role is cleared for, and an MCP credential's role filters
-what search, page reads and link lists return. Getting it wrong exposes content. The defaults
+`publish` stages only the pages a role is cleared for, and any tool serving this KB is expected
+to filter by the same roles. Getting it wrong exposes content. The defaults
 that ship with the kit:
 
 - **`default`**: ordinary content; nothing confidential.

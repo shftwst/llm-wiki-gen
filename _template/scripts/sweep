@@ -3,16 +3,17 @@
 # anything that might be mid-download. Two inputs feed it:
 #
 #   inbox/    a SHAREABLE staging directory: unprivileged contributors drop files there.
-#   capture/  the access layer's untrusted ingress queue (phone uploads, agent submits),
-#             shared across KBs and living beside them, not inside one. An item is swept
-#             only once triage has recorded a promotion decision for THIS KB in its
-#             sidecar, capture/.meta/<id>.json:  "promoted": { "kb", "at", "by" }.
+#   capture/  an OPTIONAL external intake queue, shared across KBs and living beside them, not
+#             inside one. Something outside this KB puts items there (a phone upload, an agent
+#             submission) and records a triage decision in each item's sidecar,
+#             capture/.meta/<id>.json:  "promoted": { "kb", "at", "by" }. An item is swept only
+#             once a decision names THIS KB. A KB with no sibling capture/ sweeps inbox/ and is
+#             otherwise unaffected.
 #
-# Promotion is a recorded decision, not a move: the server that receives captures never
-# writes into a KB, so every KB can stay mounted read-only to it. Sweep, which already runs
-# with write access to raw/, is what acts on the decision. An item with no promotion (or one
-# naming another KB) is left in the queue. A missing or unreadable sidecar means "not
-# promoted", so the failure direction is always "stays in the queue".
+# Promotion is a recorded decision, not a move, so whatever receives captures needs no write
+# access to a KB at all. Sweep, which already runs with write access to raw/, is what acts on
+# it. An item with no promotion, or one naming another KB, is left in the queue. A missing or
+# unreadable sidecar means "not promoted", so the failure direction is always "stays put".
 #
 # This sweep MOVES each curated item into raw/ (the protected store), so once curated a
 # source leaves the shared area entirely — contributors can't read, alter, or delete it.
@@ -38,7 +39,7 @@
 #
 # On a name collision the incoming item is renamed with a timestamp suffix; nothing is clobbered.
 #
-# PINKY_CAPTURE_DIR overrides the capture queue location (default: capture/ beside the KB).
+# KB_CAPTURE_DIR overrides the queue location (default: capture/ beside the KB).
 
 set -euo pipefail
 
@@ -50,7 +51,8 @@ INBOX="$KB_DIR/inbox"
 RAW="$KB_DIR/raw"
 JUNK="$KB_DIR/junk"
 KB_NAME="$(basename "$KB_DIR")"
-CAPTURE="${PINKY_CAPTURE_DIR:-$(cd "$KB_DIR/.." && pwd)/capture}"
+# PINKY_CAPTURE_DIR is honoured too, for a host that already sets it.
+CAPTURE="${KB_CAPTURE_DIR:-${PINKY_CAPTURE_DIR:-$(cd "$KB_DIR/.." && pwd)/capture}}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 mkdir -p "$RAW" "$JUNK"

@@ -76,6 +76,57 @@ current files, and a checksum per kit-owned file (see below). `new-kb` writes it
 `scripts/update-kit` fetches the kit at a version, refreshes only the kit-owned column, and
 prints what changed. It never touches the seeded column.
 
+### Where the kit comes from
+
+`.kit` records a source, and `update-kit` resolves it in this order:
+
+1. A path given on the command line, `update-kit --from /path/to/llm-wiki-gen`. Wins over
+   everything, and is how a consultant updates a base from a checkout they brought with them.
+2. The `source` recorded in `.kit`, which `new-kb` writes. Normally the kit's git remote, since
+   the kit is its own repository; a path or a tarball URL works the same way.
+3. Nothing. `update-kit` says so and stops, rather than guessing.
+
+A version argument pins the fetch; without one it takes the newest tag the source offers and
+names it before changing anything.
+
+This means a base never needs a checkout beside it, and never needs pinky. A deployment host
+with network access to the kit's remote can update every base it holds.
+
+### Sites with no route to the remote
+
+A client site may have no outbound access, which rules out a fetch. Two routes cover it, and
+both use the same `--from`:
+
+- A checkout or an unpacked release on local disk or a mounted share.
+- A tarball of the kit, which `update-kit` unpacks to a temporary directory and treats as a
+  checkout.
+
+So the offline story is not a separate mechanism, only a different source. Nothing about the
+refresh, the checksum guard or the reporting changes.
+
+### Several bases at once
+
+A deployment holds more than one base, and running a command per base does not scale past a
+handful.
+
+- `update-kit --check` refreshes nothing and reports whether this base is behind, which is what
+  the staleness notice in `ingest` and `lint` calls.
+- Pinky wraps both for a whole deployment: `./pinky update-kb <kb>`, `./pinky update-kb --all`
+  to walk every base under `KB_ROOT`, and `./pinky update-kb --check` to list which are behind
+  and by how much. It runs the base's own `update-kit` inside the ops container, which already
+  carries git, so the host needs no checkout.
+
+The kit version is pinned per base in its own `.kit`, independently of `PINKY_VERSION`. Two
+bases can sit on different kit versions on purpose, which is how you update one, watch an
+ingest run through it, and only then do the rest.
+
+### The kit is not baked into the pinky images
+
+It would be convenient and it is the wrong call. It would tie the kit's release cadence to
+pinky's, which undoes the reason the kit is a separate repository, and it would lock out a
+client base that has no pinky. Pinky supplies a runner and a container with git in it. The kit
+supplies itself.
+
 It also performs a one-time migration, so bases created before this design convert themselves:
 when a base has no `CHARTER.md` and its `AGENTS.md` still carries a `## Charter` section, the
 section is lifted into `CHARTER.md` first, and only then is `AGENTS.md` refreshed. A base that

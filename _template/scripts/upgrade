@@ -169,7 +169,10 @@ done
 report() { [ -n "$2" ] && { printf '  %s:%s\n' "$1" "$(printf '%s' "$2" | tr ' ' '\n' | sed 's/^/ /' | tr '\n' ' ')"; } || true; }
 
 note "kit $SRC at ${VERSION}${INSTALLED:+ (installed: $INSTALLED)}"
-[ "$MIGRATED" -eq 1 ] && note "charter: lifted out of AGENTS.md into CHARTER.md (yours from now on)"
+if [ "$MIGRATED" -eq 1 ]; then
+  if [ "$CHECK" -eq 1 ]; then note "charter: would be lifted out of AGENTS.md into CHARTER.md first"
+  else note "charter: lifted out of AGENTS.md into CHARTER.md (yours from now on)"; fi
+fi
 report "to update" "$changed"; report "new" "$added"; report "unchanged" "$same"
 report "pinned, skipped" "$pinned"; report "EDITED HERE" "$edited"
 

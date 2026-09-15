@@ -150,13 +150,15 @@ if [ "$DRY" -eq 1 ]; then
   exit 0
 fi
 
-# Commit the raw/ custody moves so they're captured independently of any later ingest.
-# junk/ is a gitignored holding pen, so only the raw/ additions are committed.
+# Record the custody move. raw/ and inbox/ contents are both gitignored, so this usually
+# stages nothing: the sources themselves are never versioned, and backup is what covers them.
+# Commit only when something actually changed, rather than reporting a failure every sweep.
 if [ "$moved" -gt 0 ] && command -v git >/dev/null 2>&1 && git -C "$KB_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-  body="$(printf 'raw/%s\n' "${names[@]}")"
   git -C "$KB_DIR" add -A -- raw inbox >/dev/null 2>&1 || true
-  git -C "$KB_DIR" commit -q -m "Sweep: $moved source(s) → raw" -m "$body" \
-    >/dev/null 2>&1 || echo "sweep: (nothing committed)"
+  if ! git -C "$KB_DIR" diff --cached --quiet 2>/dev/null; then
+    body="$(printf 'raw/%s\n' "${names[@]}")"
+    git -C "$KB_DIR" commit -q -m "Sweep: $moved source(s) → raw" -m "$body" >/dev/null 2>&1 || true
+  fi
 fi
 
 msg="sweep: $moved moved into raw/"

@@ -13,6 +13,19 @@ Thumbs.db
 # Extracted source text: derived from raw/, rebuilt by scripts/convert
 .ingest/text/
 
+# raw/ holds the sources themselves and never enters git: they can be large, are often
+# symlinks to living mounts, and may carry material that must not leave the machine. The
+# wiki is the versioned artefact; raw/ is what backup is for. Keep the dir + README.
+raw/*
+!raw/README.md
+
+# Per-machine agent permissions (.claude/settings.json, the hook wiring, IS committed)
+.claude/settings.local.json
+
+# Environment files: credentials and machine-local paths
+.env
+.env.*
+
 # inbox/ is transient staging (swept into raw/); don't commit drops, keep the dir + README
 inbox/*
 !inbox/README.md

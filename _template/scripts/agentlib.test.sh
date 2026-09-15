@@ -11,11 +11,13 @@ mkdir -p "$TMP/kb/scripts" "$TMP/kb/.ingest" "$TMP/bin"
 cp "$HERE/agentlib.sh" "$TMP/kb/scripts/agentlib.sh"
 cp "$HERE/query" "$TMP/kb/scripts/query"
 
-# fake hermes: records argv (one per line) and cwd, prints a reply
+# fake hermes: records argv (one per line) and cwd, prints a reply.
+# pwd -P on both sides of the comparison: on macOS mktemp -d returns a path under /var, which is
+# a symlink to /private/var, so a logical pwd and the expected physical path never match.
 cat > "$TMP/bin/hermes" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$FAKE_LOG"
-pwd > "$FAKE_LOG.cwd"
+pwd -P > "$FAKE_LOG.cwd"
 echo "hermes reply"
 EOF
 # fake claude: records argv, emits a stream-json transcript with a cost
@@ -75,7 +77,7 @@ vals="$(lib 'kb_agent_init; kb_agent_run "p" >/dev/null; printf "%s|%s|%s|%s" "$
 [ "$vals" = "0.42|3|1200|fake-model-1" ] || fail "claude: cost fields wrong: $vals"
 
 # --- cmd driver ---------------------------------------------------------------------------
-KB_AGENT=cmd KB_AGENT_CMD="cat > \"$TMP/cmd.in\"; pwd > \"$TMP/cmd.cwd\"; echo cmd reply" \
+KB_AGENT=cmd KB_AGENT_CMD="cat > \"$TMP/cmd.in\"; pwd -P > \"$TMP/cmd.cwd\"; echo cmd reply" \
   lib 'kb_agent_init; kb_agent_run "stdin prompt" > "$TMP/cmd.out"'
 [ "$(cat "$TMP/cmd.in")" = "stdin prompt" ] || fail "cmd: prompt should arrive on stdin"
 [ "$(cat "$TMP/cmd.out")" = "cmd reply" ] || fail "cmd: stdout should pass through"

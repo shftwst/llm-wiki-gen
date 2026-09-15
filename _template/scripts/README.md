@@ -250,7 +250,21 @@ where it points:
 
 An absolute link records the host's path, and inside a container the knowledge base root is
 mounted somewhere else, so that path does not exist even when the target sits within the root.
-Writing the link relative fixes it. `convert` names any source it cannot reach and says which
+Writing the link relative fixes it.
+
+For a target that is genuinely elsewhere, a cloud-sync folder being the usual case, relative
+cannot help: the link has to escape the root, so it dangles in the container whichever way it
+is written. Mount that path at the same path instead, and the absolute link resolves:
+
+```yaml
+# compose.override.yml
+services:
+  ops:
+    volumes:
+      - /Users/you/Library/CloudStorage/OneDrive-Acme:/Users/you/Library/CloudStorage/OneDrive-Acme:ro
+```
+
+Read-only, because sources are never written. `convert` names any source it cannot reach and says which
 of these two cases it is.
 
 Where every source sits physically under the mount, or is linked relatively, a container can do

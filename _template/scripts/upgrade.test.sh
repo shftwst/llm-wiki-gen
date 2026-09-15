@@ -4,6 +4,12 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_SRC="$(cd "$HERE/../.." && pwd)"
+# This one needs the kit's own layout (_template/ and scripts/new-kb) to build a fixture KB from.
+# It ships into every KB along with the rest of scripts/, where that layout is absent, so skip
+# there rather than failing: a KB is not the place to test the kit's scaffolding.
+if [ ! -d "$KIT_SRC/_template" ] || [ ! -x "$KIT_SRC/scripts/new-kb" ]; then
+  echo "SKIP: not running inside the kit (no _template/ or scripts/new-kb)"; exit 0
+fi
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fail() { echo "FAIL: $1" >&2; exit 1; }
 

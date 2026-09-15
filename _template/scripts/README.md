@@ -233,6 +233,14 @@ symlinked living source is a dangling link and converts nothing.
 
 ## `publish`: role-filtered views for the web
 
+Each role's site is built with `baseUrl` set to `<host>/<kb>/<role>`, because Quartz takes the
+path from it and stamps it on `<body data-basepath>`, which the client-side router and the 404
+handler resolve every navigation against. Left at Quartz's stock value the path is `/`, so
+in-page navigation and search walk back to the server root and 404 under the `/<kb>/<role>/`
+prefix Caddy serves. It differs per role, so it is set inside the build loop. `WIKI_HOST`
+overrides the host, which only affects absolute URLs such as og:url and RSS; a live
+`--serve` preview is unaffected, since Quartz empties the base path itself there.
+
 The KB title is free text and lands in two structured places, the role landing page's YAML
 frontmatter and Quartz's config, so it is escaped as a quoted scalar in both. A title like
 `Acme Ltd: Operations` would otherwise parse as a nested mapping rather than a string.

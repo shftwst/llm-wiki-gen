@@ -82,6 +82,30 @@ kb_title() {
   basename "$KB_DIR"
 }
 
+# quartz_set_base_url <role>: Quartz takes the PATH of baseUrl and stamps it onto
+# <body data-basepath>, which the client-side router and the 404 handler resolve every
+# navigation against. Caddy serves each role under /<kb>/<role>/, so with baseUrl left at the
+# stock value the path is "/" and the router walks back to the server root and 404s. It differs
+# per role, so it is set inside the build loop rather than once.
+#
+# Only the path matters for that. The host affects absolute URLs (og:url, RSS, sitemap) and is
+# unknown at build time, so WIKI_HOST overrides a private-by-default guess. Quartz forces an
+# empty basePath under --serve, so a live preview is unaffected either way.
+quartz_set_base_url() {
+  B="$(yaml_dq "${WIKI_HOST:-localhost:8788}/$(basename "$KB_DIR")/$1")"
+  if [ -f "$QZ/quartz.config.ts" ]; then
+    cfg="$QZ/quartz.config.ts"
+    B="$B" perl -0pi -e 's/baseUrl:\s*"(?:[^"\\]|\\.)*"/baseUrl: $ENV{B}/' "$cfg"
+  elif [ -f "$QZ/quartz.config.yaml" ] || [ -f "$QZ/quartz.config.default.yaml" ]; then
+    cfg="$QZ/quartz.config.yaml"; [ -f "$cfg" ] || cfg="$QZ/quartz.config.default.yaml"
+    B="$B" perl -pi -e 's/^(\s*)baseUrl:.*/$1baseUrl: $ENV{B}/' "$cfg"
+  else
+    echo "publish: WARNING — no Quartz config found to set baseUrl in" >&2; return 0
+  fi
+  grep -qF "baseUrl: $B" "$cfg" \
+    || echo "publish: WARNING — baseUrl patch did not take; the site's links will 404 under /<kb>/<role>/" >&2
+}
+
 # quartz_set_title: patch the cloned Quartz's site title so the header stops reading the stock
 # "Quartz" default. The title is escaped rather than stripped: stripping silently mangled a
 # title containing a quote, and then the check below compared against the unstripped original
@@ -223,6 +247,7 @@ if [ "$ALL" = 0 ]; then
     printf 'publish[%s]: serving live preview at http://localhost:8080 (Ctrl-C to stop) ...\n' "$ROLE"
     ( cd "$QZ" && npx quartz build --serve )
   else
+    quartz_set_base_url "$ROLE"
     ( cd "$QZ" && npx quartz build ) && printf 'publish[%s]: built → %s/public\n' "$ROLE" "$QZ"
   fi
 else
@@ -237,6 +262,7 @@ else
     stage_role "$role" "$OUT" || continue
     { [ "$MODE" = dry ] || [ "$QZOK" = 0 ]; } && continue
     rm -rf "$QZ/content" "$QZ/public"; cp -R "$OUT" "$QZ/content"
+    quartz_set_base_url "$role"     # per role: each is served under its own /<kb>/<role>/
     ( cd "$QZ" && npx quartz build ) >/dev/null
     site="$KB_DIR/.publish/sites/$role"
     rm -rf "$site"; mkdir -p "$site"; cp -R "$QZ/public/." "$site/"

@@ -68,23 +68,23 @@ for. Both are optional; a base with neither behaves exactly as it does now.
 - `STYLE.local.md` is read after `STYLE.md` wherever style is read. Its content is additions and
   exceptions for this base, not a replacement.
 
-## `.kit` and the update command
+## `.kit` and the upgrade command
 
 A `.kit` file at the base's root records where the kit came from, which version produced the
 current files, and a checksum per kit-owned file (see below). `new-kb` writes it.
 
-`scripts/update-kit` fetches the kit at a version, refreshes only the kit-owned column, and
-prints what changed. It never touches the seeded column.
+`scripts/upgrade` fetches the kit at a version, refreshes only the kit-owned column, and prints
+what changed. It never touches the seeded column.
 
 ### Where the kit comes from
 
-`.kit` records a source, and `update-kit` resolves it in this order:
+`.kit` records a source, and `upgrade` resolves it in this order:
 
-1. A path given on the command line, `update-kit --from /path/to/llm-wiki-gen`. Wins over
+1. A path given on the command line, `upgrade --from /path/to/llm-wiki-gen`. Wins over
    everything, and is how a consultant updates a base from a checkout they brought with them.
 2. The `source` recorded in `.kit`, which `new-kb` writes. Normally the kit's git remote, since
    the kit is its own repository; a path or a tarball URL works the same way.
-3. Nothing. `update-kit` says so and stops, rather than guessing.
+3. Nothing. `upgrade` says so and stops, rather than guessing.
 
 A version argument pins the fetch; without one it takes the newest tag the source offers and
 names it before changing anything.
@@ -98,7 +98,7 @@ A client site may have no outbound access, which rules out a fetch. Two routes c
 both use the same `--from`:
 
 - A checkout or an unpacked release on local disk or a mounted share.
-- A tarball of the kit, which `update-kit` unpacks to a temporary directory and treats as a
+- A tarball of the kit, which `upgrade` unpacks to a temporary directory and treats as a
   checkout.
 
 So the offline story is not a separate mechanism, only a different source. Nothing about the
@@ -109,17 +109,19 @@ refresh, the checksum guard or the reporting changes.
 A deployment holds more than one base, and running a command per base does not scale past a
 handful.
 
-- `update-kit --check` refreshes nothing and reports whether this base is behind, which is what
-  the staleness notice in `ingest` and `lint` calls.
-- Pinky wraps it for a whole deployment under the same name, because it is the same operation:
-  `./pinky update-kit <kb>`, `./pinky update-kit --all` to walk every base under `KB_ROOT`, and
-  `./pinky update-kit --check` to list which are behind. It runs each base's own
-  `scripts/update-kit` inside the ops container, which already carries git, so the host needs no
+- `scripts/upgrade --check` refreshes nothing and reports whether this base is behind, which is
+  what the staleness notice in `ingest` and `lint` calls.
+- Pinky wraps it for a whole deployment, disambiguated by object rather than by a second verb:
+  `./pinky kb upgrade <kb>`, `./pinky kb upgrade --all` to walk every base under `KB_ROOT`, and
+  `./pinky kb upgrade --check` to list which are behind. It runs each base's own
+  `scripts/upgrade` inside the ops container, which already carries git, so the host needs no
   checkout.
 
-  One name, deliberately. An earlier draft called pinky's wrapper `update-kb`, which differs
-  from `update-kit` by a letter and means nearly the same thing, and the first person to read it
-  asked which was which. The wrapper should read as a wrapper, not as a second thing to learn.
+One verb everywhere, and the object says what it acts on. `./pinky upgrade 0.4` is the
+deployment; `./pinky kb upgrade` is the bases. The two cannot be told apart by argument shape,
+since a version and a base name look alike, so the noun does the work. Earlier drafts used
+`update-kit` and `update-kb`, which differ by a letter and mean nearly the same thing; the first
+person to read that asked which was which.
 
 The kit version is pinned per base in its own `.kit`, independently of `PINKY_VERSION`. Two
 bases can sit on different kit versions on purpose, which is how you update one, watch an
@@ -137,9 +139,9 @@ when a base has no `CHARTER.md` and its `AGENTS.md` still carries a `## Charter`
 section is lifted into `CHARTER.md` first, and only then is `AGENTS.md` refreshed. A base that
 has already converted is left alone.
 
-### Updating the updater
+### Upgrading the upgrader
 
-`update-kit` is itself kit-owned, so a refresh rewrites the script while it is running. Bash
+`scripts/upgrade` is itself kit-owned, so a refresh rewrites the script while it is running. Bash
 reads a script incrementally rather than loading it whole, so overwriting it in place partway
 through leaves the shell executing whatever now sits at that byte offset. The failure is a
 one-off, looks like nothing else, and is very hard to diagnose after the fact.
@@ -189,8 +191,8 @@ because a base handed to a client should carry its tooling in its history.
 
 ## Bootstrap
 
-Existing bases have no `update-kit` to run, so the first update arrives by hand: copy that one
-script in, or run it from a kit checkout against the base's path. It bites once per base that
+Existing bases have no `scripts/upgrade` to run, so the first one arrives by hand: copy that
+single script in, or run it from a kit checkout against the base's path. It bites once per base that
 predates this, and never again.
 
 ## Not covered

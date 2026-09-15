@@ -154,6 +154,47 @@ It only ever **raises**. Lowering a tier exposes content, so that stays a human 
 Raising one page can put a page derived from it below its inputs, so it repeats until nothing
 changes. Run `classify` first if the sensitivity ledger is stale.
 
+## `convert`: extract text from binary sources
+
+No language model reads a `.docx`. It is a zip of XML, and a model handed the bytes sees
+nothing, whether it is a frontier model or a local one. `convert` does the extraction up front,
+deterministically, so what the agent can read stops depending on which agent is configured.
+
+```sh
+./scripts/convert              # convert anything new or changed under raw/
+./scripts/convert --dry-run    # say what would be converted; write nothing
+./scripts/convert <raw-path>   # one source
+```
+
+`raw/` is never touched. Output lands in `.ingest/text/` with an `index.tsv` recording each
+source, the tool used, and whether it produced anything. That directory is derived and
+gitignored: delete it and re-run to rebuild. A source is reconverted only when its size or
+mtime changes.
+
+| Extension | Tool | Debian package |
+|---|---|---|
+| `.docx` `.odt` `.rtf` `.html` `.epub` | `pandoc -t plain` | `pandoc` |
+| `.xlsx` | `xlsx2csv` | `xlsx2csv` |
+| `.doc` / `.xls` / `.ppt` | `catdoc` / `xls2csv` / `catppt` | `catdoc` |
+| `.pdf` | `pdftotext -layout` | `poppler-utils` |
+
+Text files and images are skipped: the agent reads those directly. A missing tool is a warning
+and a skip, never a failure, so a machine with only poppler still converts its PDFs.
+
+A PDF that yields almost no text has no text layer, which means it is a scan. It is recorded as
+`status=scanned` rather than silently empty, so those can be sent for OCR (`tesseract`) or
+rasterised with `pdftoppm` and read by a vision model. `CONVERT_SCAN_FLOOR` tunes the
+threshold.
+
+Everything for a full-coverage install, about 330 MB on Debian:
+
+```sh
+apt-get install -y pandoc poppler-utils xlsx2csv catdoc
+```
+
+Run it where `raw/` actually resolves, the same rule as `ingest`: inside a container a
+symlinked living source is a dangling link and converts nothing.
+
 ## `publish`: role-filtered views for the web
 
 Build a read-only, shareable view of the wiki for a role, including only the pages that role

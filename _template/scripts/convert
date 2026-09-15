@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# convert — extract plain text from the non-text sources in raw/ into a rebuildable cache, so
+# an agent that cannot open a binary document can still read what is in it.
+#
+#   ./scripts/convert              convert anything new or changed under raw/
+#   ./scripts/convert --dry-run    say what would be converted; write nothing
+#   ./scripts/convert <raw-path>   convert one source (path relative to raw/, or a full path)
+#
+# Why this exists: no language model reads a .docx. It is a zip of XML, and a model that is
+# handed the bytes sees nothing useful. This is true of frontier and local models alike, so the
+# extraction step belongs here, deterministic and model-independent, rather than being a
+# capability that silently varies with whichever agent is configured.
+#
+# raw/ is never touched. Output goes to .ingest/text/, which is derived state: delete it and
+# re-run to rebuild. .ingest/text/index.tsv records what was converted, by which tool, and
+# whether it produced anything.
+#
+# Routing by extension, cheapest tool that can do the job:
+#   .docx .odt .rtf .html .htm .epub   pandoc -t plain
+#   .xlsx                              xlsx2csv
+#   .doc                               catdoc
+#   .xls                               xls2csv     (catdoc package)
+#   .ppt                               catppt      (catdoc package)
+#   .pdf                               pdftotext; a PDF that yields almost nothing is a scan,
+#                                      recorded as status=scanned for an OCR or vision pass
+#   text-ish and images                skipped: the agent reads those directly
+#
+# A missing tool is a skip with a warning, never a failure: a KB with no pandoc still converts
+# its PDFs. Install what you need (Debian: pandoc poppler-utils xlsx2csv catdoc).
+
+set -eu
+
+KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$KB_DIR/scripts/kblib.sh"   # .ingestignore filter
+RAW="$KB_DIR/raw"
+OUT="$KB_DIR/.ingest/text"
+INDEX="$OUT/index.tsv"
+INDEX_HEADER=$'# index.tsv — raw source → extracted text (derived; delete .ingest/text to rebuild).\n# Columns: path\tsize\tmtime\ttool\tstatus\tout\tdate'
+# Below this many characters a PDF is treated as having no text layer, i.e. a scan.
+SCAN_FLOOR="${CONVERT_SCAN_FLOOR:-64}"
+
+DRY=0; ONE=""
+case "${1:-}" in
+  --dry-run) DRY=1;;
+  "") ;;
+  -*) echo "convert: unknown flag '$1'" >&2; exit 1;;
+  *)  ONE="$1";;
+esac
+
+[ -d "$RAW" ] || { echo "convert: no raw/ yet."; exit 0; }
+mkdir -p "$OUT"
+[ -f "$INDEX" ] || printf '%s\n' "$INDEX_HEADER" > "$INDEX"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+warned=""
+warn_missing() {
+  case " $warned " in *" $1 "*) return 0;; esac
+  warned="$warned $1"
+  echo "convert: $1 not installed; skipping $2 sources." >&2
+}
+
+# tool_for <lowercased-extension>: echo "<tool> <status-if-missing>", or nothing to skip.
+tool_for() {
+  case "$1" in
+    docx|odt|rtf|html|htm|epub) echo pandoc;;
+    xlsx)                       echo xlsx2csv;;
+    doc)                        echo catdoc;;
+    xls)                        echo xls2csv;;
+    ppt)                        echo catppt;;
+    pdf)                        echo pdftotext;;
+    *)                          echo "";;
+  esac
+}
+
+# extract <tool> <src> <dest>: run the tool, leaving <dest> written (possibly empty).
+extract() {
+  case "$1" in
+    pandoc)    pandoc -t plain --wrap=none "$2" -o "$3" 2>/dev/null || : > "$3";;
+    xlsx2csv)  xlsx2csv -a "$2" > "$3" 2>/dev/null || : > "$3";;
+    catdoc)    catdoc -w "$2" > "$3" 2>/dev/null || : > "$3";;
+    xls2csv)   xls2csv -x "$2" > "$3" 2>/dev/null || : > "$3";;
+    catppt)    catppt "$2" > "$3" 2>/dev/null || : > "$3";;
+    pdftotext) pdftotext -layout -q "$2" "$3" 2>/dev/null || : > "$3";;
+  esac
+  [ -f "$3" ] || : > "$3"
+}
+
+# index_lookup <path>: echo the recorded "size mtime" for a path, or nothing.
+index_lookup() {
+  awk -F'\t' -v p="$1" '$1==p {print $2" "$3; exit}' "$INDEX"
+}
+
+converted=0; skipped=0; scans=0; unchanged=0
+
+# Follow symlinks: a living source is a link into a mount, and its files are the point.
+if [ -n "$ONE" ]; then
+  case "$ONE" in /*) list="$ONE";; raw/*) list="$KB_DIR/$ONE";; *) list="$RAW/$ONE";; esac
+  [ -e "$list" ] || { echo "convert: no such source '$ONE'" >&2; exit 1; }
+  files="$(find -L "$list" -type f 2>/dev/null || true)"
+else
+  files="$(find -L "$RAW" -type f 2>/dev/null || true)"
+fi
+
+for f in $files; do
+  base="${f##*/}"
+  kb_ignored "$base" && continue
+  [ -s "$f" ] || continue                       # zero-byte: possibly mid-download, leave it
+
+  ext="$(printf '%s' "${base##*.}" | tr '[:upper:]' '[:lower:]')"
+  [ "$ext" = "$base" ] && continue              # no extension: nothing to route on
+  tool="$(tool_for "$ext")"
+  [ -n "$tool" ] || continue                    # text, images, unknown: the agent reads directly
+
+  rel="${f#"$RAW"/}"
+  size="$(wc -c < "$f" | tr -d ' ')"
+  mtime="$(date -r "$f" +%s 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
+  if [ "$(index_lookup "$rel")" = "$size $mtime" ]; then unchanged=$((unchanged + 1)); continue; fi
+
+  if ! have "$tool"; then warn_missing "$tool" ".$ext"; skipped=$((skipped + 1)); continue; fi
+
+  if [ "$DRY" -eq 1 ]; then
+    echo "convert: [dry-run] $rel → $tool"; converted=$((converted + 1)); continue
+  fi
+
+  # Output name: the source path flattened, so the cache is browsable and collision-free.
+  outname="$(printf '%s' "$rel" | tr '/' '_' | tr -c 'A-Za-z0-9._-' '-').txt"
+  dest="$OUT/$outname"
+  extract "$tool" "$f" "$dest"
+  # pdftotext appends its own .txt when handed a bare destination; normalise either result.
+  [ -f "$dest.txt" ] && mv "$dest.txt" "$dest"
+
+  chars="$(wc -c < "$dest" | tr -d ' ')"
+  status=ok
+  if [ "$ext" = pdf ] && [ "$chars" -lt "$SCAN_FLOOR" ]; then
+    status=scanned                              # no text layer: needs OCR or a vision pass
+    scans=$((scans + 1))
+  elif [ "$chars" -lt 1 ]; then
+    status=empty
+  fi
+
+  grep -v -F "$(printf '%s\t' "$rel")" "$INDEX" > "$INDEX.tmp" 2>/dev/null || cp "$INDEX" "$INDEX.tmp"
+  mv "$INDEX.tmp" "$INDEX"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$rel" "$size" "$mtime" "$tool" "$status" "$outname" "$(date +%F)" >> "$INDEX"
+  echo "convert: $rel → $outname ($tool, $status)"
+  converted=$((converted + 1))
+done
+
+if [ "$DRY" -eq 1 ]; then
+  echo "convert: [dry-run] $converted to convert, $unchanged unchanged, $skipped skipped. Nothing written."
+  exit 0
+fi
+msg="convert: $converted converted, $unchanged unchanged"
+[ "$skipped" -gt 0 ] && msg="$msg, $skipped skipped (missing tools)"
+[ "$scans"   -gt 0 ] && msg="$msg; $scans PDF(s) have no text layer (status=scanned — OCR or a vision pass)"
+echo "$msg."

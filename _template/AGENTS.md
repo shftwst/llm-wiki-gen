@@ -84,6 +84,7 @@ task. When in doubt, prefer inaction and surface it to the human.
 │                     # (sweep also takes items promoted to this KB from the capture/ queue)
 ├── junk/              # sweep holding pen: .ingestignore matches (gitignored)
 ├── raw/               # sources (files, directories, symlinks), protected, never shared
+│                     # binary sources are extracted to .ingest/text/ by scripts/convert
 ├── wiki/              # the wiki (Obsidian vault root), you own everything here
 │   ├── index.md       # content catalog of every wiki page
 │   └── overview.md    # the evolving top-level synthesis / home page

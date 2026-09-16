@@ -162,6 +162,39 @@ else
   printf '  (none yet — answered queries log page hits here)\n'
 fi
 
+# --- link shape (is the wiki a mesh or does it have structure?) --------------
+# Three numbers that say whether retrieval could ever use the link graph to tell pages apart.
+# A small single-subject wiki is close to a complete graph: everything relates to everything, so
+# a shared link is evidence of nothing and expanding a search by links returns the whole corpus.
+# Structure shows up as link mass moving out of the hubs and into rarely-linked pages.
+#
+# Nothing reads these yet. They are here so the shape is visible as the wiki grows, rather than
+# being guessed at later. Out-degree is the one to watch: if it stays flat as pages are added,
+# density falls on its own and structure emerges; if it climbs, the mesh persists at any size.
+printf '\nLINK SHAPE (wiki/)\n'; rule
+pages_n="$(find "$WIKI" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+links_n="$(grep -rhoE '\[\[[^]]+\]\]' "$WIKI" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${pages_n:-0}" -gt 0 ] && [ "${links_n:-0}" -gt 0 ]; then
+  inbound_tmp="$(mktemp)"
+  grep -rhoE '\[\[[^]|#]+' "$WIKI" --include='*.md' 2>/dev/null \
+    | sed 's/\[\[//' | sort | uniq -c | sort -rn > "$inbound_tmp"
+  # Both scale with the wiki, with a floor so they mean something on a small one: 5% of targets
+  # rounds to a single page at 31 pages, which measures one hub rather than the hubs.
+  rare_cut="$(awk -v n="$pages_n" 'BEGIN{c=int(n*0.05); print (c<3)?3:c}')"
+  top_n="$(awk -v n="$(wc -l < "$inbound_tmp")" 'BEGIN{c=int(n*0.05); print (c<5)?5:c}')"
+  hub_mass="$(head -n "$top_n" "$inbound_tmp" | awk '{s+=$1} END{print s+0}')"
+  rare_mass="$(awk -v c="$rare_cut" '$1<=c{s+=$1} END{print s+0}' "$inbound_tmp")"
+  rm -f "$inbound_tmp"
+  printf '  pages %s · links %s · out-degree %s (avg links per page)\n' \
+    "$pages_n" "$links_n" "$(awk -v l="$links_n" -v p="$pages_n" 'BEGIN{printf "%.1f", l/p}')"
+  printf '  hub concentration   %3d%%  (links landing on the top %s targets; structure below ~20%%)\n' \
+    "$(( hub_mass * 100 / links_n ))" "$top_n"
+  printf '  rare-target share   %3d%%  (links landing on a page with <=%s inbound; useful above ~30%%)\n' \
+    "$(( rare_mass * 100 / links_n ))" "$rare_cut"
+else
+  printf '  (no wiki pages or no links yet)\n'
+fi
+
 # --- demand (query-driven depth signal) -------------------------------------
 printf '\nDEMANDED (.ingest/demand.tsv)\n'; rule
 if have "$DEMAND"; then

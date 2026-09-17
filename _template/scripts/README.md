@@ -135,6 +135,18 @@ em-dash overuse); privacy heuristics (SIN-shaped numbers, credential keywords); 
 style** (the same tells across `AGENTS.md`, `CLAUDE.md`, `README`, and `docs/`, since `STYLE.md` governs
 docs too). It is the cheap pre-check; the LLM Lint workflow and the verify pass go deeper.
 
+### Ledger keys must resolve
+
+`coverage.tsv` and `sensitivity.tsv` are keyed by a `raw/`-relative path, and that key is the
+only thing joining a ledger row to the file it describes. `scan --refresh` fingerprints a row
+only if its path resolves, so a row keyed by an invented slug is never checked for change: the
+source can move and nothing notices. Pages cite real paths, so a slug also breaks the join from a
+page to the state of its sources.
+
+Both failures are silent, which is why a non-resolving key is an ERROR rather than a warning. A
+trailing `(note)` on the key is commentary and is ignored. The check is skipped where `raw/`
+itself cannot be read, since every row would otherwise fail for an unrelated reason.
+
 ## `stats`: ingestion summary
 
 A read-only dashboard over the state ledgers and `wiki/`. No LLM, no cost.

@@ -30,4 +30,43 @@ printf '%s\n' "$out" | grep -q "inherits the maximum tier" && fail "inheritance 
 sed -i.bak 's/^privilege: business-sensitive/privilege: personal-sensitive/' "$TMP/wiki/analysis/rates-analysis.md" && rm -f "$TMP/wiki/analysis/rates-analysis.md.bak"
 "$TMP/scripts/lint" --quiet >/dev/null 2>&1 || fail "lint failed with derived page above its input tier"
 
+# --- ledger keys must resolve under raw/ -----------------------------------------------------
+# coverage.tsv is joined to the filesystem by its path column. A row keyed by an invented slug is
+# never fingerprinted, so the source can change and nothing notices: a silent failure, hence an
+# error. Skipped entirely where raw/ cannot be read, or every row would fail for the wrong reason.
+K="$TMP/ledger"; mkdir -p "$K/scripts" "$K/.ingest" "$K/wiki" "$K/.schema" "$K/raw/Finance/Tax"
+cp "$HERE/kblib.sh" "$K/scripts/kblib.sh"; cp "$HERE/lint" "$K/scripts/lint"
+cp "$TMP/.schema/page-types.tsv" "$K/.schema/" 2>/dev/null || printf 'concept\tcontent\tconcepts\t-\n' > "$K/.schema/page-types.tsv"
+printf 'default\t0\t-\t-\n' > "$K/.schema/privilege-tiers.tsv"
+printf 'real-file\n' > "$K/raw/Finance/Tax/t5.pdf"
+
+hdr='# Columns: path\tvalue\tstatus\tpass\tlast_read\tfingerprint\tnotes'
+
+# a key that resolves, including one carrying a trailing "(note)" and one naming a directory
+printf '%s\nFinance/Tax/t5.pdf\thigh\tread\t1\t2026-01-01\t-\t-\nFinance/Tax (the tax folder)\thigh\tread\t1\t2026-01-01\t-\t-\n' "$hdr" \
+  > "$K/.ingest/coverage.tsv"
+out="$("$K/scripts/lint" 2>&1)" || fail "a KB whose ledger keys resolve should pass: $out"
+printf '%s\n' "$out" | grep -q "all 2 key(s) resolve" || fail "resolving keys not reported: $out"
+
+# an invented slug, which is what a real KB drifted into
+printf '%s\ntax/ye2023-t5-summary (2022 T5 summary)\thigh\tread\t1\t2026-01-01\t-\t-\n' "$hdr" \
+  > "$K/.ingest/coverage.tsv"
+out="$("$K/scripts/lint" --quiet 2>&1)" && fail "a non-resolving ledger key must be an ERROR"
+printf '%s\n' "$out" | grep -q "do not resolve under raw/" || fail "bad key not reported: $out"
+printf '%s\n' "$out" | grep -q "tax/ye2023-t5-summary" || fail "offending key not named: $out"
+printf '%s\n' "$out" | grep -q "(2022 T5 summary)" && fail "the trailing note should be stripped from the path"
+
+# sensitivity.tsv is keyed the same way and is checked too
+printf 'Finance/Tax/t5.pdf\thigh\tread\t1\t2026-01-01\t-\t-\n' > "$K/.ingest/coverage.tsv"
+printf '# Columns: item\ttier\tbasis\tdate\nnot/a/real/path\tdefault\tkeyword\t2026-01-01\n' > "$K/.ingest/sensitivity.tsv"
+out="$("$K/scripts/lint" --quiet 2>&1)" && fail "a bad sensitivity key must be an ERROR too"
+printf '%s\n' "$out" | grep -q "sensitivity.tsv" || fail "sensitivity not checked: $out"
+rm -f "$K/.ingest/sensitivity.tsv"
+
+# unreachable raw/ skips rather than failing every row for the wrong reason
+printf '%s\ntax/whatever\thigh\tread\t1\t2026-01-01\t-\t-\n' "$hdr" > "$K/.ingest/coverage.tsv"
+rm -rf "$K/raw"; mkdir -p "$K/raw"; ln -s /nonexistent/mount "$K/raw/living"
+out="$("$K/scripts/lint" 2>&1)" || fail "unreachable raw/ should skip, not fail: $out"
+printf '%s\n' "$out" | grep -q "resolves to nothing here, skipped" || fail "skip not reported: $out"
+
 echo "PASS"

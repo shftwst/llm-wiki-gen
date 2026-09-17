@@ -12,6 +12,7 @@ set -eu   # no pipefail: `grep ... | wc` deliberately tolerates no-match
 KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$KB_DIR/scripts/kblib.sh"   # page-type + privilege-tier vocabularies (.schema/)
 WIKI="$KB_DIR/wiki"
+RAW="$KB_DIR/raw"
 QUIET=0; [ "${1:-}" = "--quiet" ] && QUIET=1
 [ -d "$WIKI" ] || { echo "lint: no wiki/ yet."; exit 0; }
 
@@ -197,6 +198,41 @@ for d in $DOC_LIST; do
   dcq=$(grep -o '[“”‘’]' "$d" 2>/dev/null | wc -l | tr -d ' ')
   [ "${dcq:-0}" -gt 0 ] && warn "docs: $rel has $dcq curly quote(s)"
 done
+
+# --- ledger join keys must resolve under raw/ --------------------------------
+# coverage.tsv and sensitivity.tsv are keyed by a raw/-relative path, and that key is what joins
+# a ledger row to the file it describes. scan --refresh only fingerprints rows whose path
+# resolves, so a row keyed by an invented slug is never checked for change: the source can move
+# and nothing notices. Pages cite real paths, so a slug also breaks the join from a page to its
+# source's state. Both failures are silent, which is why this is an ERROR rather than a warning.
+#
+# Skipped where raw/ itself is unreachable (a container, or a missing mount), since every path
+# would "fail" for a reason that has nothing to do with the ledgers.
+sect "ledger keys"
+if [ ! -d "$RAW" ]; then
+  [ "$QUIET" -eq 1 ] || printf 'ledger keys: no raw/ yet, skipped\n'
+elif [ -z "$(find -L "$RAW" -type f 2>/dev/null | head -1)" ]; then
+  [ "$QUIET" -eq 1 ] || printf 'ledger keys: raw/ resolves to nothing here, skipped (run where the sources are)\n'
+else
+  for ledger in coverage sensitivity; do
+    lf="$KB_DIR/.ingest/$ledger.tsv"
+    [ -f "$lf" ] || continue
+    bad=0; total=0; firstbad=""
+    while IFS="$(printf '\t')" read -r key _rest; do
+      case "$key" in \#*|"") continue;; esac
+      p="${key%% (*}"                      # a trailing "(note)" is commentary, not part of the path
+      total=$((total + 1))
+      [ -e "$RAW/$p" ] && continue
+      bad=$((bad + 1)); [ -n "$firstbad" ] || firstbad="$p"
+    done < "$lf"
+    [ "$total" -eq 0 ] && continue
+    if [ "$bad" -gt 0 ]; then
+      err ".ingest/$ledger.tsv: $bad of $total key(s) do not resolve under raw/ (first: '$firstbad') — change detection cannot run on those rows"
+    elif [ "$QUIET" -eq 0 ]; then
+      printf '.ingest/%s.tsv: all %s key(s) resolve under raw/\n' "$ledger" "$total"
+    fi
+  done
+fi
 
 # --- kit drift (cheap, local, no network) ------------------------------------
 # A kit-owned file whose checksum no longer matches .kit has been edited here. That is allowed,

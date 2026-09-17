@@ -163,3 +163,41 @@ kb_unresolved_sources() {
     printf '%s\n' "${_e#"$1"/}"
   done
 }
+
+# Change-aimed verification (.ingest/coverage.tsv) ---------------------------
+# A synthesised page is a copy of what its sources said on the day they were read. When a source
+# moves, the copy may be wrong and nothing about the page knows it. These readers name the pages
+# whose sources have moved, so verification can be pointed at what actually changed rather than
+# at what merely looks risky. Deterministic: no model decides what is affected.
+
+# kb_source_coverage <raw-relative-path> <field>: the coverage row covering this path, field 3
+# (status) or 5 (last_read). A row covers a path when the path equals it or sits underneath it,
+# so a page citing one file inside a covered group picks up that group's state.
+kb_source_coverage() {
+  [ -f "$KB_DIR/.ingest/coverage.tsv" ] || return 0
+  awk -F'\t' -v p="$1" -v f="$2" '
+    /^#/ || /^[[:space:]]*$/ { next }
+    { item = $1; sub(/ +\(.*$/, "", item)
+      if (p == item || index(p, item "/") == 1) { print $f; exit } }' "$KB_DIR/.ingest/coverage.tsv"
+}
+
+# kb_page_moved_sources <page-file>: for each cited source whose state means this page may now be
+# wrong, print "<reason><TAB><source>". Two reasons, and they are different failures:
+#   stale     the source changed and has not been re-read, so the page reflects an old version
+#   reread    the source was re-read AFTER this page was last verified, so the verification is
+#             out of date even though the page may have been updated
+# URL-encoded citation links are decoded first, since a wikilink to a real path escapes spaces.
+kb_page_moved_sources() {
+  _verified="$(awk -F': ' '/^verified:/{sub(/^[^:]*: */,"");print;exit}' "$1" 2>/dev/null)"
+  while IFS= read -r _src; do
+    [ -n "$_src" ] || continue
+    _dec="$(printf '%b' "${_src//%/\\x}")"
+    _st="$(kb_source_coverage "$_dec" 3)"
+    if [ "$_st" = stale ]; then printf 'stale\t%s\n' "$_dec"; continue; fi
+    case "$_verified" in ''|-|false) continue;; esac
+    _lr="$(kb_source_coverage "$_dec" 5)"
+    case "$_lr" in ''|-) continue;; esac
+    [ "$_lr" \> "$_verified" ] && printf 'reread\t%s\n' "$_dec"
+  done < <(kb_page_sources "$1")
+  return 0
+}

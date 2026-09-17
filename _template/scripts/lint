@@ -211,8 +211,11 @@ done
 sect "ledger keys"
 if [ ! -d "$RAW" ]; then
   [ "$QUIET" -eq 1 ] || printf 'ledger keys: no raw/ yet, skipped\n'
-elif [ -z "$(find -L "$RAW" -type f 2>/dev/null | head -1)" ]; then
-  [ "$QUIET" -eq 1 ] || printf 'ledger keys: raw/ resolves to nothing here, skipped (run where the sources are)\n'
+elif [ -z "$(find -L "$RAW" -mindepth 1 -type f ! -name README.md 2>/dev/null | head -1)" ]; then
+  # raw/README.md is shipped by the kit, so it is present even when every real source sits behind
+  # a symlink that does not resolve here. Counting it as evidence that raw/ is readable made this
+  # check fail every row on a machine that simply cannot see the sources, which is a false alarm.
+  [ "$QUIET" -eq 1 ] || printf 'ledger keys: raw/ holds no reachable sources here, skipped (run where the mount is)\n'
 else
   for ledger in coverage sensitivity; do
     lf="$KB_DIR/.ingest/$ledger.tsv"

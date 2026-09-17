@@ -67,6 +67,13 @@ rm -f "$K/.ingest/sensitivity.tsv"
 printf '%s\ntax/whatever\thigh\tread\t1\t2026-01-01\t-\t-\n' "$hdr" > "$K/.ingest/coverage.tsv"
 rm -rf "$K/raw"; mkdir -p "$K/raw"; ln -s /nonexistent/mount "$K/raw/living"
 out="$("$K/scripts/lint" 2>&1)" || fail "unreachable raw/ should skip, not fail: $out"
-printf '%s\n' "$out" | grep -q "resolves to nothing here, skipped" || fail "skip not reported: $out"
+printf '%s\n' "$out" | grep -q "no reachable sources here, skipped" || fail "skip not reported: $out"
+
+# The kit ships raw/README.md, so it is present even when every real source is unreachable.
+# Treating it as proof that raw/ is readable made this check fail every row on a machine that
+# simply cannot see the sources: a false alarm dressed as a finding.
+printf 'the kit ships this\n' > "$K/raw/README.md"
+out="$("$K/scripts/lint" 2>&1)" || fail "README.md alone must not count as a reachable source: $out"
+printf '%s\n' "$out" | grep -q "no reachable sources here, skipped" || fail "README.md defeated the skip: $out"
 
 echo "PASS"

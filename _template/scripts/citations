@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# citations — track the wiki's dependency on its sources, so a changed source points at the
+# pages it may have invalidated. The graph is read from each page's own "## Sources" section
+# (see KB_COMMENTARY/dependency-substrate); nothing is hand-maintained.
+#
+#   ./scripts/citations --graph    print every page -> source edge (page<TAB>source)
+#   ./scripts/citations --check    report sources that changed since the baseline, and the
+#                                  pages that cite them; also new (never-baselined) sources
+#   ./scripts/citations --accept   record the current fingerprint of every cited source as the
+#                                  baseline (do this after a verify pass confirms the wiki)
+#
+# --check prints one affected page per line to stdout (so a verify pass can consume it) and a
+# human summary to stderr. Read-only except --accept, which writes .ingest/citations.tsv.
+#
+# Run where raw/ resolves (the real machine, not a container): a source that does not resolve
+# cannot be fingerprinted, and is reported as unreachable rather than silently treated as fresh.
+
+set -eu
+
+KB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$KB_DIR/scripts/kblib.sh"   # kb_citation_edges, kb_fingerprint
+RAW="$KB_DIR/raw"
+BASELINE="$KB_DIR/.ingest/citations.tsv"
+BASELINE_HEADER=$'# citations.tsv - dependency freshness baseline (managed by scripts/citations).\n# The fingerprint of each cited source when the wiki was last verified against it.\n# Columns: source\tfingerprint\tdate'
+
+MODE=""
+case "${1:-}" in
+  --graph) MODE=graph;;
+  --check) MODE=check;;
+  --accept) MODE=accept;;
+  *) echo "usage: citations --graph | --check | --accept" >&2; exit 2;;
+esac
+
+[ -d "$KB_DIR/wiki" ] || { echo "citations: no wiki/ yet." >&2; exit 0; }
+
+if [ "$MODE" = graph ]; then
+  kb_citation_edges
+  exit 0
+fi
+
+EDGES="$(kb_citation_edges || true)"
+SOURCES="$(printf '%s\n' "$EDGES" | cut -f2 | grep -v '^$' | sort -u || true)"
+
+baseline_fp() { awk -F'\t' -v s="$1" '$1==s {print $2; exit}' "$BASELINE" 2>/dev/null || true; }
+pages_citing() { printf '%s\n' "$EDGES" | awk -F'\t' -v s="$1" '$2==s {print $1}'; }
+
+if [ "$MODE" = accept ]; then
+  printf '%s\n' "$BASELINE_HEADER" > "$BASELINE"
+  printf '%s\n' "$SOURCES" | while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    printf '%s\t%s\t%s\n' "$s" "$(kb_fingerprint "$RAW/$s")" "$(date +%F)" >> "$BASELINE"
+  done
+  echo "citations: baselined $(printf '%s\n' "$SOURCES" | grep -c .) cited source(s)." >&2
+  exit 0
+fi
+
+# --- check -------------------------------------------------------------------
+affected="$(mktemp)"; trap 'rm -f "$affected"' EXIT
+
+printf '%s\n' "$SOURCES" | while IFS= read -r s; do
+  [ -n "$s" ] || continue
+  if [ ! -e "$RAW/$s" ]; then
+    echo "citations: UNREACHABLE $s (run where raw/ resolves)" >&2
+    continue
+  fi
+  cur="$(kb_fingerprint "$RAW/$s")"
+  base="$(baseline_fp "$s")"
+  if [ -z "$base" ]; then
+    echo "citations: NEW $s (no baseline; --accept after verifying)" >&2
+    pages_citing "$s" >> "$affected"
+  elif [ "$cur" != "$base" ]; then
+    echo "citations: CHANGED $s" >&2
+    pages_citing "$s" | sed 's/^/    /' >&2
+    pages_citing "$s" >> "$affected"
+  fi
+done
+
+# Baseline entries no longer cited: the page stopped citing them, so the entry is stale.
+if [ -f "$BASELINE" ]; then
+  grep -v '^#' "$BASELINE" | cut -f1 | grep -v '^$' | while IFS= read -r b; do
+    printf '%s\n' "$SOURCES" | grep -qxF "$b" || echo "citations: DROPPED $b (baselined but no longer cited)" >&2
+  done
+fi
+
+sort -u "$affected"
+n="$(sort -u "$affected" | grep -c . || true)"
+[ "$n" -eq 0 ] && echo "citations: every cited source matches its baseline." >&2 \
+               || echo "citations: $n page(s) cite a changed or unbaselined source." >&2
+exit 0

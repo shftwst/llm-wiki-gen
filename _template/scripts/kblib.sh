@@ -230,3 +230,33 @@ kb_fingerprint() {
     printf '%s %s\n' "$_f" "$(kb_statline "$_f")"
   done | kb_hash
 }
+
+# Citation dependency graph (wiki -> raw/) -----------------------------------
+# A synthesised page is a copy of what its sources said when it was written, so the page's own
+# "## Sources" citations ARE its dependency edges: declared by the page, at the moment the
+# dependency is created, so they cannot drift out of step with it. These readers expose that
+# graph. See KB_COMMENTARY/dependency-substrate.
+
+# kb_page_citations <page-file>: the raw/-relative source paths a page cites, URL-decoded so they
+# match real files (a wikilink escapes spaces as %20). Only paths that resolve under raw/ are
+# returned; a broken citation is a lint concern, not a dependency.
+kb_page_citations() {
+  sed -n '/^## Sources/,$p' "$1" 2>/dev/null \
+    | grep -oE 'raw/[^ )]+' | sed 's#^raw/##; s#/*$##' | grep -v '^$' | sort -u \
+    | while IFS= read -r _enc; do
+        _p="$(printf '%b' "${_enc//%/\\x}")"
+        [ -e "$KB_DIR/raw/$_p" ] && printf '%s\n' "$_p"
+      done
+}
+
+# kb_citation_edges: every page -> source edge across the wiki, as "page<TAB>source" lines.
+# page is wiki/-relative. Invert this (sort on field 2) to get source -> the pages that cite it,
+# which is what turns "this source changed" into "these pages are suspect".
+kb_citation_edges() {
+  find "$KB_DIR/wiki" -name '*.md' 2>/dev/null | LC_ALL=C sort | while IFS= read -r _f; do
+    _rel="${_f#"$KB_DIR"/wiki/}"
+    kb_page_citations "$_f" | while IFS= read -r _s; do
+      [ -n "$_s" ] && printf '%s\t%s\n' "$_rel" "$_s"
+    done
+  done
+}

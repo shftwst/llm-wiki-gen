@@ -76,6 +76,30 @@ Non-empty `.ingestignore` matches move to `junk/`. A zero-byte file, or a direct
 
 `KB_CAPTURE_DIR` overrides the queue location (default: `capture/` beside the KB).
 
+## `citations`: which pages a changed source may have invalidated
+
+A synthesised page is a copy of what its sources said when it was written. When a source
+changes, the page can be silently wrong, and the only reliable record of which page depends on
+which source is the page's own `## Sources` section: the citation is the dependency, written by
+the page at the moment it is created, so it cannot drift (see
+[`../../docs`] and `KB_COMMENTARY/dependency-substrate` in the kit).
+
+```sh
+./scripts/citations --graph    # every page -> source edge
+./scripts/citations --accept   # baseline the fingerprint of each cited source (after verifying)
+./scripts/citations --check    # sources changed since the baseline, and the pages that cite them
+```
+
+`--check` prints one affected page per line to stdout, so a verify pass can read the list and
+re-audit exactly those pages rather than sampling by risk. A human summary (which source
+changed, which pages) goes to stderr. It is read-only; only `--accept` writes, to
+`.ingest/citations.tsv`.
+
+This only covers sources something has already been written from. A source sitting unread is
+cited by nothing, so it is invisible here; the reading frontier (`scan`, `coverage.tsv`) is what
+tracks those. Run where `raw/` resolves, or a source cannot be fingerprinted and is reported
+unreachable rather than assumed fresh.
+
 ## `upgrade`: take the kit's fixes into this KB
 
 A KB is templated once by `new-kb` and then frozen, so without this every later fix stays in the

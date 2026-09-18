@@ -201,3 +201,32 @@ kb_page_moved_sources() {
   done < <(kb_page_sources "$1")
   return 0
 }
+
+# Portable hashing, stat, and source fingerprinting ---------------------------
+# Shared by scan (coverage change detection) and citations (dependency change detection) so a
+# "fingerprint" means the same thing to both. Moved here from scan; do not redefine per-script.
+if command -v shasum >/dev/null 2>&1; then
+  kb_hash() { shasum -a 256 | cut -d' ' -f1; }
+elif command -v sha256sum >/dev/null 2>&1; then
+  kb_hash() { sha256sum | cut -d' ' -f1; }
+else
+  kb_hash() { echo "kblib: need shasum or sha256sum on PATH" >&2; return 1; }
+fi
+
+if stat -f '%z' . >/dev/null 2>&1; then
+  kb_statline() { stat -f '%z %m' "$1"; }   # BSD / macOS: <size> <mtime>
+else
+  kb_statline() { stat -c '%s %Y' "$1"; }   # GNU / Linux
+fi
+
+# kb_fingerprint <path>: hash of (path size mtime) for every non-junk file at or under <path>,
+# sorted for stability. Follows symlinks so a living-source target is covered. A single file
+# fingerprints just itself; a directory fingerprints its whole non-junk subtree. Empty output
+# (path resolves to nothing) hashes to a stable constant, so an unreachable source is detectable
+# as "no fingerprint" rather than mistaken for unchanged.
+kb_fingerprint() {
+  find -L "$1" -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r _f; do
+    kb_ignored "${_f##*/}" && continue
+    printf '%s %s\n' "$_f" "$(kb_statline "$_f")"
+  done | kb_hash
+}

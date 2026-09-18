@@ -42,29 +42,15 @@ MANIFEST_HEADER=$'# manifest.tsv — ingest baseline. Columns: source_path\tkind
 mkdir -p "$STATE_DIR"
 [ -f "$MANIFEST" ] || printf '%s\n' "$MANIFEST_HEADER" > "$MANIFEST"
 
-# --- portable hashing + stat -------------------------------------------------
-if command -v shasum >/dev/null 2>&1; then
-  _hash() { shasum -a 256 | cut -d' ' -f1; }
-elif command -v sha256sum >/dev/null 2>&1; then
-  _hash() { sha256sum | cut -d' ' -f1; }
-else
-  die "need shasum or sha256sum on PATH"
-fi
+# --- portable hashing + stat (definitions shared via kblib) -------------------
+command -v shasum >/dev/null 2>&1 || command -v sha256sum >/dev/null 2>&1 || die "need shasum or sha256sum on PATH"
+_hash() { kb_hash; }
 
-if stat -f '%z' . >/dev/null 2>&1; then
-  _statline() { stat -f '%z %m' "$1"; }   # BSD / macOS: <size> <mtime>
-else
-  _statline() { stat -c '%s %Y' "$1"; }   # GNU / Linux
-fi
+_statline() { kb_statline "$1"; }
 
 # fingerprint = hash of (relative-path size mtime) for every non-junk file under the source,
 # sorted for stability. Follows symlinks (-L) so living symlink targets are covered.
-fingerprint() {
-  find -L "$1" -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do
-    kb_ignored "${f##*/}" && continue
-    printf '%s %s\n' "$f" "$(_statline "$f")"
-  done | _hash
-}
+fingerprint() { kb_fingerprint "$1"; }
 
 # size_sig = "<total-bytes>_<file-count>" over non-junk files. Cheap (stat only); used to find
 # duplicate CANDIDATES before the more expensive content hash.

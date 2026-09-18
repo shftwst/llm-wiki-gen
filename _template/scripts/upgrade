@@ -167,7 +167,9 @@ owned() {
     case "$line" in ''|\#*) continue;; esac
     case "$line" in
       */) [ -d "$KIT/_template/$line" ] || continue
-          (cd "$KIT/_template" && find "$line" -type f | sort);;
+          # strip the trailing slash: find "dir/" can emit "dir//file" on some platforms, and
+          # the doubled slash then fails an exact-path match downstream (pin, report, join).
+          (cd "$KIT/_template" && find "${line%/}" -type f | sort);;
       *)  [ -f "$KIT/_template/$line" ] && printf '%s\n' "$line";;
     esac
   done < "$KIT/_template/.kit-owned"

@@ -85,7 +85,9 @@ KIT_VERSION="$(git -C "$KIT_DIR" rev-parse --short HEAD 2>/dev/null || echo loca
     case "$line" in ''|\#*) continue;; esac
     case "$line" in
       */) [ -d "$TARGET/$line" ] || continue
-          (cd "$TARGET" && find "$line" -type f | sort);;
+          # strip the trailing slash so find cannot emit "dir//file"; the .kit keys must match
+          # exactly what scripts/upgrade later looks up (which strips it too).
+          (cd "$TARGET" && find "${line%/}" -type f | sort);;
       *)  [ -f "$TARGET/$line" ] && printf '%s\n' "$line";;
     esac
   done < "$TEMPLATE_DIR/.kit-owned" | while IFS= read -r f; do
